@@ -7,25 +7,37 @@ namespace QuixoUnity.UI
 {
     public sealed class MenuController : MonoBehaviour
     {
+        private const string GameplaySceneName = "GameplayScene";
+
         [SerializeField] private GameKind nextGame = GameKind.Quixo;
 
         public void StartQuixo()
         {
-            nextGame = GameKind.Quixo;
-            SceneTransit.SelectedGame = nextGame;
-            SceneManager.LoadScene("GameplayScene");
+            StartGame(GameKind.Quixo);
         }
 
         public void StartQomet()
         {
-            nextGame = GameKind.Qomet;
-            SceneTransit.SelectedGame = nextGame;
-            SceneManager.LoadScene("GameplayScene");
+            StartGame(GameKind.Qomet);
         }
 
         public void Quit()
         {
             Application.Quit();
+        }
+
+        private void StartGame(GameKind kind)
+        {
+            nextGame = kind;
+            SceneTransit.SelectedGame = nextGame;
+
+            if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
+            {
+                SceneManager.LoadScene(GameplaySceneName);
+                return;
+            }
+
+            Debug.LogError($"Scene '{GameplaySceneName}' introuvable. Ajoutez-la aux Build Settings.", this);
         }
     }
 

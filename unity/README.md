@@ -19,7 +19,13 @@ Refonte du projet Python vers Unity.
 
 1. Ouvrir Unity Hub
 2. Add project -> dossier `c:/quixo/unity`
-3. Ouvrir la scene `Assets/Scenes/MenuScene.unity`
+3. Si `Assets/Scenes/MenuScene.unity` n'existe pas encore, suivre `UNITY_SETUP_STEPS.md`
+4. Ouvrir la scene `Assets/Scenes/MenuScene.unity`
+
+## Logique de jeu
+
+La V1 Unity utilise les regles C# natives dans `Assets/Scripts/Core`.
+Le code Python a ete conserve comme reference et ancienne application PySide6.
 
 ## V1
 
