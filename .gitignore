@@ -3,3 +3,19 @@ __pycache__/
 build/
 dist/
 *.pyc
+Library/
+Temp/
+Obj/
+Build/
+Builds/
+Logs/
+UserSettings/
+.vs/
+*.csproj
+*.sln
+*.user
+
+cometquixo/
+unity/game/
+unity/Assets/TextMesh Pro/Examples & Extras/
+unity/Assets/TextMesh Pro/Documentation/

@@ -1,7 +1,9 @@
 {
   "name": "QuixoUnity.Runtime",
   "rootNamespace": "QuixoUnity",
-  "references": [],
+  "references": [
+    "Unity.TextMeshPro"
+  ],
   "includePlatforms": [],
   "excludePlatforms": [],
   "allowUnsafeCode": false,
