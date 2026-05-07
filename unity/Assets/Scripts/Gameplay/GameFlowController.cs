@@ -18,6 +18,7 @@ namespace QuixoUnity.Gameplay
         private BoardState _state = null!;
         private Vector2Int? _selected;
         private bool _ready;
+        private bool _loadingMenu;
 
         private void Start()
         {
@@ -31,6 +32,12 @@ namespace QuixoUnity.Gameplay
 
         public void RestartGame()
         {
+            if (!ResolveReferences())
+            {
+                _ready = false;
+                return;
+            }
+
             StartGame(gameKind, "Partie reinitialisee.");
         }
 
@@ -183,8 +190,14 @@ namespace QuixoUnity.Gameplay
 
         public void ReturnToMenu()
         {
+            if (_loadingMenu)
+            {
+                return;
+            }
+
             if (Application.CanStreamedLevelBeLoaded(MenuSceneName))
             {
+                _loadingMenu = true;
                 SceneManager.LoadScene(MenuSceneName);
                 return;
             }
@@ -198,9 +211,9 @@ namespace QuixoUnity.Gameplay
 
         private void StartGame(GameKind kind, string message)
         {
+            _ready = false;
             if (!ResolveReferences())
             {
-                _ready = false;
                 enabled = false;
                 return;
             }
@@ -210,14 +223,15 @@ namespace QuixoUnity.Gameplay
             _state = new BoardState(_rules.BoardSize);
             _rules.SetupInitialState(_state);
             _selected = null;
-            _ready = true;
+            _loadingMenu = false;
 
+            hudView.Bind(this);
+            hudView.SetDirections(new List<MoveDirection>());
             boardView.Initialize(_state.Size, HandleCellClick);
             boardView.Render(_state, null);
-            hudView.Bind(this);
             hudView.SetTurn(_state.CurrentPlayer);
-            hudView.SetDirections(new List<MoveDirection>());
             hudView.SetInfo(message);
+            _ready = true;
         }
 
         private bool EnsureReady()

@@ -18,6 +18,82 @@ namespace QuixoUnity.EditorTools
         private const string ScenesFolder = "Assets/Scenes";
         private const string MenuScenePath = "Assets/Scenes/MenuScene.unity";
         private const string GameplayScenePath = "Assets/Scenes/GameplayScene.unity";
+        private const GameplayTheme ActiveGameplayTheme = GameplayTheme.ClassicWood;
+
+        private enum GameplayTheme
+        {
+            ClassicWood,
+            PremiumDark,
+            CleanModern,
+        }
+
+        private readonly struct GameplayPalette
+        {
+            public GameplayPalette(
+                Color ambientLight,
+                Color cameraBackground,
+                Color board,
+                Color boardTrim,
+                Color cube,
+                Color cubeTop,
+                Color selectedCube,
+                Color selection,
+                Color player1,
+                Color player2,
+                Color uiPanel,
+                Color uiButton,
+                Color uiButtonSecondary,
+                Color uiButtonDisabled,
+                Color uiText,
+                Color uiMuted,
+                Color keyLight,
+                float cameraSize,
+                float boardScale,
+                float markFontSize)
+            {
+                AmbientLight = ambientLight;
+                CameraBackground = cameraBackground;
+                Board = board;
+                BoardTrim = boardTrim;
+                Cube = cube;
+                CubeTop = cubeTop;
+                SelectedCube = selectedCube;
+                Selection = selection;
+                Player1 = player1;
+                Player2 = player2;
+                UiPanel = uiPanel;
+                UiButton = uiButton;
+                UiButtonSecondary = uiButtonSecondary;
+                UiButtonDisabled = uiButtonDisabled;
+                UiText = uiText;
+                UiMuted = uiMuted;
+                KeyLight = keyLight;
+                CameraSize = cameraSize;
+                BoardScale = boardScale;
+                MarkFontSize = markFontSize;
+            }
+
+            public Color AmbientLight { get; }
+            public Color CameraBackground { get; }
+            public Color Board { get; }
+            public Color BoardTrim { get; }
+            public Color Cube { get; }
+            public Color CubeTop { get; }
+            public Color SelectedCube { get; }
+            public Color Selection { get; }
+            public Color Player1 { get; }
+            public Color Player2 { get; }
+            public Color UiPanel { get; }
+            public Color UiButton { get; }
+            public Color UiButtonSecondary { get; }
+            public Color UiButtonDisabled { get; }
+            public Color UiText { get; }
+            public Color UiMuted { get; }
+            public Color KeyLight { get; }
+            public float CameraSize { get; }
+            public float BoardScale { get; }
+            public float MarkFontSize { get; }
+        }
 
         private static readonly Color BackgroundColor = new(0.08f, 0.1f, 0.13f);
         private static readonly Color PanelColor = new(0.13f, 0.16f, 0.2f, 0.92f);
@@ -29,6 +105,15 @@ namespace QuixoUnity.EditorTools
         [MenuItem("Tools/Quixo/Create/Repair Scenes")]
         public static void CreateOrRepairScenes()
         {
+            if (EditorApplication.isPlayingOrWillChangePlaymode || Application.isPlaying)
+            {
+                EditorUtility.DisplayDialog(
+                    "Quixo",
+                    "Stop Play Mode before creating or repairing scenes.",
+                    "OK");
+                return;
+            }
+
             EnsureScenesFolder();
             CreateMenuScene();
             CreateGameplayScene();
@@ -79,22 +164,28 @@ namespace QuixoUnity.EditorTools
 
         private static void CreateGameplayScene()
         {
+            var palette = GetPalette(ActiveGameplayTheme);
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            RenderSettings.ambientLight = new Color(0.45f, 0.46f, 0.48f);
+            RenderSettings.ambientLight = palette.AmbientLight;
 
-            var camera = CreateMainCamera();
-            CreateDirectionalLight();
+            var camera = CreateMainCamera(palette);
+            CreateDirectionalLight(palette);
             CreateEventSystem();
 
             var boardViewObject = new GameObject("BoardView");
+            boardViewObject.transform.localScale = Vector3.one * palette.BoardScale;
             var boardView = boardViewObject.AddComponent<BoardViewRenderer>();
 
             var boardRoot = new GameObject("BoardRoot");
             boardRoot.transform.SetParent(boardViewObject.transform, false);
+            boardRoot.transform.localPosition = Vector3.zero;
+            ApplyBoardTheme(boardView, palette);
 
             var hudObject = CreateCanvas("HUD");
             var hudView = hudObject.AddComponent<HudView>();
-            BuildGameplayHud(hudObject.transform, hudView);
+            BuildGameplayHud(hudObject.transform, hudView, palette);
+            AssignColor(hudView, "turnPlayer1Color", palette.Player1);
+            AssignColor(hudView, "turnPlayer2Color", palette.Player2);
 
             var gameRoot = new GameObject("GameRoot");
             var gameFlow = gameRoot.AddComponent<GameFlowController>();
@@ -107,42 +198,123 @@ namespace QuixoUnity.EditorTools
             EditorSceneManager.SaveScene(scene, GameplayScenePath);
         }
 
-        private static void BuildGameplayHud(Transform canvas, HudView hudView)
+        private static void ApplyBoardTheme(BoardViewRenderer boardView, GameplayPalette palette)
+        {
+            AssignColor(boardView, "generatedCellColor", palette.Cube);
+            AssignColor(boardView, "generatedTopColor", palette.CubeTop);
+            AssignColor(boardView, "generatedSelectedCellColor", palette.SelectedCube);
+            AssignColor(boardView, "generatedBoardColor", palette.Board);
+            AssignColor(boardView, "generatedBoardTrimColor", palette.BoardTrim);
+            AssignColor(boardView, "generatedSelectionColor", palette.Selection);
+            AssignColor(boardView, "generatedPlayer1Color", palette.Player1);
+            AssignColor(boardView, "generatedPlayer2Color", palette.Player2);
+            AssignFloat(boardView, "generatedMarkFontSize", palette.MarkFontSize);
+        }
+
+        private static GameplayPalette GetPalette(GameplayTheme theme)
+        {
+            switch (theme)
+            {
+                case GameplayTheme.PremiumDark:
+                    return new GameplayPalette(
+                        new Color(0.44f, 0.42f, 0.38f),
+                        new Color(0.08f, 0.09f, 0.11f),
+                        new Color(0.72f, 0.5f, 0.23f),
+                        new Color(0.43f, 0.28f, 0.12f),
+                        new Color(0.96f, 0.91f, 0.78f),
+                        new Color(1f, 0.96f, 0.84f),
+                        new Color(1f, 0.88f, 0.52f),
+                        new Color(1f, 0.73f, 0.18f),
+                        new Color(0.16f, 0.45f, 0.95f),
+                        new Color(0.95f, 0.38f, 0.08f),
+                        new Color(0.02f, 0.025f, 0.03f, 0.32f),
+                        new Color(0.18f, 0.28f, 0.42f),
+                        new Color(0.34f, 0.24f, 0.14f),
+                        new Color(0.11f, 0.12f, 0.14f, 0.58f),
+                        new Color(0.96f, 0.94f, 0.88f),
+                        new Color(0.76f, 0.78f, 0.82f),
+                        new Color(1f, 0.9f, 0.68f),
+                        4.85f,
+                        1.45f,
+                        4.55f);
+                case GameplayTheme.CleanModern:
+                    return new GameplayPalette(
+                        new Color(0.86f, 0.86f, 0.82f),
+                        new Color(0.78f, 0.8f, 0.82f),
+                        new Color(0.73f, 0.56f, 0.34f),
+                        new Color(0.51f, 0.37f, 0.2f),
+                        new Color(0.94f, 0.87f, 0.71f),
+                        new Color(1f, 0.94f, 0.78f),
+                        new Color(1f, 0.92f, 0.68f),
+                        new Color(0.95f, 0.65f, 0.18f),
+                        new Color(0.03f, 0.18f, 0.4f),
+                        new Color(0.78f, 0.28f, 0.2f),
+                        new Color(1f, 0.98f, 0.92f, 0.32f),
+                        new Color(0.16f, 0.36f, 0.58f),
+                        new Color(0.46f, 0.43f, 0.38f),
+                        new Color(0.74f, 0.73f, 0.69f, 0.58f),
+                        new Color(0.12f, 0.13f, 0.14f),
+                        new Color(0.28f, 0.29f, 0.3f),
+                        new Color(1f, 0.94f, 0.82f),
+                        4.85f,
+                        1.45f,
+                        4.5f);
+                default:
+                    return new GameplayPalette(
+                        new Color(0.82f, 0.78f, 0.69f),
+                        new Color(0.8f, 0.74f, 0.62f),
+                        new Color(0.7f, 0.51f, 0.29f),
+                        new Color(0.46f, 0.31f, 0.15f),
+                        new Color(0.92f, 0.82f, 0.62f),
+                        new Color(1f, 0.91f, 0.7f),
+                        new Color(1f, 0.9f, 0.6f),
+                        new Color(1f, 0.74f, 0.16f),
+                        new Color(0.04f, 0.14f, 0.34f),
+                        new Color(0.62f, 0.18f, 0.09f),
+                        new Color(0.16f, 0.1f, 0.04f, 0.22f),
+                        new Color(0.58f, 0.38f, 0.17f),
+                        new Color(0.39f, 0.27f, 0.16f),
+                        new Color(0.52f, 0.46f, 0.36f, 0.58f),
+                        new Color(0.98f, 0.94f, 0.84f),
+                        new Color(0.88f, 0.8f, 0.66f),
+                        new Color(1f, 0.94f, 0.78f),
+                        4.85f,
+                        1.45f,
+                        4.55f);
+            }
+        }
+
+        private static void BuildGameplayHud(Transform canvas, HudView hudView, GameplayPalette palette)
         {
             CreateFullScreenImage(canvas, "HudBackground", new Color(0f, 0f, 0f, 0f));
 
-            var topBar = CreatePanel(canvas, "TopBar", new Vector2(0f, 96f), new Color(0.05f, 0.06f, 0.08f, 0.72f));
-            var topRect = topBar.GetComponent<RectTransform>();
-            topRect.anchorMin = new Vector2(0f, 1f);
-            topRect.anchorMax = new Vector2(1f, 1f);
-            topRect.pivot = new Vector2(0.5f, 1f);
-            topRect.anchoredPosition = Vector2.zero;
-            topRect.sizeDelta = new Vector2(0f, 96f);
+            var statusPanel = CreatePanel(canvas, "StatusPanel", new Vector2(760f, 76f), palette.UiPanel);
+            SetAnchored(statusPanel.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(32f, -28f), new Vector2(760f, 76f));
 
-            var turnLabel = CreateText(topBar.transform, "TurnLabel", "Tour: Joueur 1 (X)", 28f, TextAlignmentOptions.Left, TextColor,
-                new Vector2(0f, 0.5f), new Vector2(48f, 0f), new Vector2(520f, 54f));
-            var infoLabel = CreateText(topBar.transform, "InfoLabel", "Choisissez un cube du bord libre ou a vous.", 20f, TextAlignmentOptions.Left, MutedTextColor,
-                new Vector2(0f, 0.5f), new Vector2(48f, -34f), new Vector2(820f, 40f));
+            var turnLabel = CreateText(statusPanel.transform, "TurnLabel", "Tour: Joueur 1 (X)", 28f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(24f, -10f), new Vector2(420f, 34f));
+            AddTextShadow(turnLabel);
 
-            var restartButton = CreateButton(topBar.transform, "RestartButton", "Recommencer", new Color(0.22f, 0.27f, 0.33f),
-                new Vector2(1f, 0.5f), new Vector2(-235f, 0f), new Vector2(180f, 52f));
-            var menuButton = CreateButton(topBar.transform, "MenuButton", "Menu", new Color(0.22f, 0.27f, 0.33f),
-                new Vector2(1f, 0.5f), new Vector2(-82f, 0f), new Vector2(116f, 52f));
+            var infoLabel = CreateText(statusPanel.transform, "InfoLabel", "Choisissez un cube du bord libre ou a vous.", 19f, TextAlignmentOptions.Left, palette.UiMuted,
+                new Vector2(0f, 1f), new Vector2(24f, -44f), new Vector2(700f, 28f));
+            AddTextShadow(infoLabel);
 
-            var directionsPanel = CreatePanel(canvas, "DirectionsPanel", new Vector2(320f, 260f), new Color(0.05f, 0.06f, 0.08f, 0.72f));
-            SetAnchored(directionsPanel.GetComponent<RectTransform>(), new Vector2(1f, 0f), new Vector2(-210f, 170f), new Vector2(320f, 260f));
+            var restartButton = CreateButton(canvas, "RestartButton", "Recommencer", palette.UiButtonSecondary,
+                new Vector2(1f, 1f), new Vector2(-184f, -32f), new Vector2(170f, 52f), palette.UiText, palette.UiButtonDisabled);
+            var menuButton = CreateButton(canvas, "MenuButton", "Menu", palette.UiButtonSecondary,
+                new Vector2(1f, 1f), new Vector2(-40f, -32f), new Vector2(112f, 52f), palette.UiText, palette.UiButtonDisabled);
 
-            CreateText(directionsPanel.transform, "DirectionsTitle", "Directions", 22f, TextAlignmentOptions.Center, TextColor,
-                new Vector2(0.5f, 1f), new Vector2(0f, -34f), new Vector2(260f, 42f));
+            var directionsPanel = CreatePanel(canvas, "DirectionsPanel", new Vector2(348f, 236f), new Color(0f, 0f, 0f, 0f));
+            SetAnchored(directionsPanel.GetComponent<RectTransform>(), new Vector2(1f, 0f), new Vector2(-60f, 46f), new Vector2(348f, 236f));
 
-            var upButton = CreateButton(directionsPanel.transform, "UpButton", "Haut", PrimaryColor,
-                new Vector2(0.5f, 0.5f), new Vector2(0f, 58f), new Vector2(110f, 54f));
-            var downButton = CreateButton(directionsPanel.transform, "DownButton", "Bas", PrimaryColor,
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -72f), new Vector2(110f, 54f));
-            var leftButton = CreateButton(directionsPanel.transform, "LeftButton", "Gauche", PrimaryColor,
-                new Vector2(0.5f, 0.5f), new Vector2(-92f, -7f), new Vector2(110f, 54f));
-            var rightButton = CreateButton(directionsPanel.transform, "RightButton", "Droite", PrimaryColor,
-                new Vector2(0.5f, 0.5f), new Vector2(92f, -7f), new Vector2(110f, 54f));
+            var upButton = CreateButton(directionsPanel.transform, "UpButton", "Haut", palette.UiButton,
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 78f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+            var downButton = CreateButton(directionsPanel.transform, "DownButton", "Bas", palette.UiButton,
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -78f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+            var leftButton = CreateButton(directionsPanel.transform, "LeftButton", "Gauche", palette.UiButton,
+                new Vector2(0.5f, 0.5f), new Vector2(-112f, 0f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+            var rightButton = CreateButton(directionsPanel.transform, "RightButton", "Droite", palette.UiButton,
+                new Vector2(0.5f, 0.5f), new Vector2(112f, 0f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
 
             upButton.interactable = false;
             downButton.interactable = false;
@@ -159,31 +331,34 @@ namespace QuixoUnity.EditorTools
             AssignObject(hudView, "rightButton", rightButton);
         }
 
-        private static Camera CreateMainCamera()
+        private static Camera CreateMainCamera(GameplayPalette palette)
         {
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
-            cameraObject.transform.position = new Vector3(0f, 6.1f, -7.2f);
+            cameraObject.transform.position = new Vector3(0f, 7f, -7f);
             cameraObject.transform.rotation = Quaternion.Euler(55f, 0f, 0f);
 
             var camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.12f, 0.14f, 0.17f);
-            camera.fieldOfView = 42f;
+            camera.backgroundColor = palette.CameraBackground;
+            camera.orthographic = true;
+            camera.orthographicSize = palette.CameraSize;
+            camera.nearClipPlane = 0.1f;
+            camera.farClipPlane = 60f;
             cameraObject.AddComponent<AudioListener>();
             cameraObject.AddComponent<PhysicsRaycaster>();
             return camera;
         }
 
-        private static void CreateDirectionalLight()
+        private static void CreateDirectionalLight(GameplayPalette palette)
         {
             var lightObject = new GameObject("Directional Light");
-            lightObject.transform.rotation = Quaternion.Euler(50f, -30f, 0f);
+            lightObject.transform.rotation = Quaternion.Euler(48f, -36f, 0f);
 
             var light = lightObject.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.2f;
-            light.color = new Color(1f, 0.96f, 0.9f);
+            light.intensity = 1.55f;
+            light.color = palette.KeyLight;
         }
 
         private static void CreateEventSystem()
@@ -259,10 +434,19 @@ namespace QuixoUnity.EditorTools
             label.alignment = alignment;
             label.color = color;
             label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Ellipsis;
             label.raycastTarget = false;
 
             SetAnchored(label.rectTransform, anchor, anchoredPosition, size);
             return label;
+        }
+
+        private static void AddTextShadow(TextMeshProUGUI label)
+        {
+            var shadow = label.gameObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.42f);
+            shadow.effectDistance = new Vector2(1f, -1f);
+            shadow.useGraphicAlpha = true;
         }
 
         private static Button CreateButton(
@@ -272,29 +456,37 @@ namespace QuixoUnity.EditorTools
             Color normalColor,
             Vector2 anchor,
             Vector2 anchoredPosition,
-            Vector2 size)
+            Vector2 size,
+            Color? textColor = null,
+            Color? disabledColor = null)
         {
             var buttonObject = new GameObject(name);
             buttonObject.transform.SetParent(parent, false);
 
             var image = buttonObject.AddComponent<Image>();
             image.color = normalColor;
+            var shadow = buttonObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.22f);
+            shadow.effectDistance = new Vector2(2f, -2f);
+            var outline = buttonObject.AddComponent<Outline>();
+            outline.effectColor = Color.Lerp(normalColor, Color.white, 0.16f);
+            outline.effectDistance = new Vector2(1f, 1f);
 
             var button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
 
             var colors = button.colors;
             colors.normalColor = normalColor;
-            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.14f);
-            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.16f);
+            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.18f);
+            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
             colors.selectedColor = colors.highlightedColor;
-            colors.disabledColor = new Color(0.18f, 0.2f, 0.24f, 0.55f);
+            colors.disabledColor = disabledColor ?? new Color(0.28f, 0.26f, 0.22f, 0.45f);
             colors.fadeDuration = 0.12f;
             button.colors = colors;
 
             SetAnchored(buttonObject.GetComponent<RectTransform>(), anchor, anchoredPosition, size);
 
-            var text = CreateText(buttonObject.transform, "Text", label, 20f, TextAlignmentOptions.Center, TextColor,
+            var text = CreateText(buttonObject.transform, "Text", label, 20f, TextAlignmentOptions.Center, textColor ?? TextColor,
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
             text.enableAutoSizing = true;
             text.fontSizeMin = 12f;
@@ -303,6 +495,7 @@ namespace QuixoUnity.EditorTools
             text.rectTransform.anchorMax = Vector2.one;
             text.rectTransform.offsetMin = Vector2.zero;
             text.rectTransform.offsetMax = Vector2.zero;
+            AddTextShadow(text);
 
             return button;
         }
@@ -318,6 +511,12 @@ namespace QuixoUnity.EditorTools
 
         private static void AssignObject(Object target, string propertyName, Object value)
         {
+            if (target == null)
+            {
+                Debug.LogError($"Impossible d'assigner '{propertyName}': target null.");
+                return;
+            }
+
             var serialized = new SerializedObject(target);
             var property = serialized.FindProperty(propertyName);
             if (property == null)
@@ -327,6 +526,48 @@ namespace QuixoUnity.EditorTools
             }
 
             property.objectReferenceValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void AssignColor(Object target, string propertyName, Color value)
+        {
+            if (target == null)
+            {
+                Debug.LogError($"Impossible d'assigner '{propertyName}': target null.");
+                return;
+            }
+
+            var serialized = new SerializedObject(target);
+            var property = serialized.FindProperty(propertyName);
+            if (property == null)
+            {
+                Debug.LogError($"Property '{propertyName}' introuvable sur {target.name}.", target);
+                return;
+            }
+
+            property.colorValue = value;
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(target);
+        }
+
+        private static void AssignFloat(Object target, string propertyName, float value)
+        {
+            if (target == null)
+            {
+                Debug.LogError($"Impossible d'assigner '{propertyName}': target null.");
+                return;
+            }
+
+            var serialized = new SerializedObject(target);
+            var property = serialized.FindProperty(propertyName);
+            if (property == null)
+            {
+                Debug.LogError($"Property '{propertyName}' introuvable sur {target.name}.", target);
+                return;
+            }
+
+            property.floatValue = value;
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(target);
         }

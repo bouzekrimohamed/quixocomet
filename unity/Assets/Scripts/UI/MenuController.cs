@@ -10,6 +10,7 @@ namespace QuixoUnity.UI
         private const string GameplaySceneName = "GameplayScene";
 
         [SerializeField] private GameKind nextGame = GameKind.Quixo;
+        private bool _loadingGameplay;
 
         public void StartQuixo()
         {
@@ -28,11 +29,17 @@ namespace QuixoUnity.UI
 
         private void StartGame(GameKind kind)
         {
+            if (_loadingGameplay)
+            {
+                return;
+            }
+
             nextGame = kind;
             SceneTransit.SelectedGame = nextGame;
 
             if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
             {
+                _loadingGameplay = true;
                 SceneManager.LoadScene(GameplaySceneName);
                 return;
             }

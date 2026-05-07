@@ -23,6 +23,8 @@ namespace QuixoUnity.UI
         [SerializeField] private float pulseDuration = 0.18f;
         [SerializeField] private float fadeDuration = 0.2f;
         [SerializeField] private float directionScaleOnEnable = 1.08f;
+        [SerializeField] private Color turnPlayer1Color = new(0.04f, 0.14f, 0.34f);
+        [SerializeField] private Color turnPlayer2Color = new(0.62f, 0.18f, 0.09f);
 
         private GameFlowController _controller = null!;
         private CanvasGroup _infoCanvasGroup = null!;
@@ -34,11 +36,10 @@ namespace QuixoUnity.UI
         private readonly Dictionary<Button, Vector3> _directionBaseScales = new();
         private Vector3 _turnBaseScale = Vector3.one;
 
-        private static readonly Color TurnPlayer1Color = new(0.27f, 0.65f, 0.99f);
-        private static readonly Color TurnPlayer2Color = new(1f, 0.49f, 0.2f);
-
         private void Awake()
         {
+            ResolveReferences();
+
             if (turnLabel != null)
             {
                 _turnBaseScale = turnLabel.rectTransform.localScale;
@@ -79,6 +80,7 @@ namespace QuixoUnity.UI
 
         public void Bind(GameFlowController controller)
         {
+            ResolveReferences();
             if (controller == null)
             {
                 Debug.LogError("HudView: controller is not assigned.", this);
@@ -102,7 +104,7 @@ namespace QuixoUnity.UI
             }
 
             turnLabel.text = $"Tour: {(player == PlayerMark.Player1 ? "Joueur 1 (X)" : "Joueur 2 (O)")}";
-            turnLabel.color = player == PlayerMark.Player1 ? TurnPlayer1Color : TurnPlayer2Color;
+            turnLabel.color = player == PlayerMark.Player1 ? turnPlayer1Color : turnPlayer2Color;
 
             if (_turnPulseRoutine != null)
             {
@@ -155,6 +157,11 @@ namespace QuixoUnity.UI
         private void CacheDirectionButton(Button button)
         {
             if (button == null)
+            {
+                return;
+            }
+
+            if (_directionRoutines.ContainsKey(button))
             {
                 return;
             }
@@ -282,28 +289,28 @@ namespace QuixoUnity.UI
                 return;
             }
 
-            button.onClick.RemoveListener(action);
+            button.onClick.RemoveAllListeners();
             button.onClick.AddListener(action);
         }
 
         private void PlayUp()
         {
-            _controller?.PlayDirection(MoveDirection.Up);
+            TryPlayDirection(upButton, MoveDirection.Up);
         }
 
         private void PlayDown()
         {
-            _controller?.PlayDirection(MoveDirection.Down);
+            TryPlayDirection(downButton, MoveDirection.Down);
         }
 
         private void PlayLeft()
         {
-            _controller?.PlayDirection(MoveDirection.Left);
+            TryPlayDirection(leftButton, MoveDirection.Left);
         }
 
         private void PlayRight()
         {
-            _controller?.PlayDirection(MoveDirection.Right);
+            TryPlayDirection(rightButton, MoveDirection.Right);
         }
 
         private void StopRunningCoroutine(ref Coroutine routine)
@@ -315,6 +322,47 @@ namespace QuixoUnity.UI
 
             StopCoroutine(routine);
             routine = null;
+        }
+
+        private void TryPlayDirection(Button button, MoveDirection direction)
+        {
+            if (_controller == null || button == null || !button.interactable)
+            {
+                return;
+            }
+
+            _controller.PlayDirection(direction);
+        }
+
+        private void ResolveReferences()
+        {
+            turnLabel ??= FindChildComponent<TextMeshProUGUI>("TurnLabel");
+            infoLabel ??= FindChildComponent<TextMeshProUGUI>("InfoLabel");
+            restartButton ??= FindChildComponent<Button>("RestartButton");
+            menuButton ??= FindChildComponent<Button>("MenuButton");
+            upButton ??= FindChildComponent<Button>("UpButton");
+            downButton ??= FindChildComponent<Button>("DownButton");
+            leftButton ??= FindChildComponent<Button>("LeftButton");
+            rightButton ??= FindChildComponent<Button>("RightButton");
+
+            CacheDirectionButton(upButton);
+            CacheDirectionButton(downButton);
+            CacheDirectionButton(leftButton);
+            CacheDirectionButton(rightButton);
+        }
+
+        private T FindChildComponent<T>(string childName) where T : Component
+        {
+            var components = GetComponentsInChildren<T>(true);
+            foreach (var component in components)
+            {
+                if (component.name == childName)
+                {
+                    return component;
+                }
+            }
+
+            return null;
         }
     }
 }
