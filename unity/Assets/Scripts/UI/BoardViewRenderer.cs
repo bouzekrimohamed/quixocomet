@@ -4,6 +4,7 @@ using QuixoUnity.Core;
 using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 
 namespace QuixoUnity.UI
 {
@@ -23,6 +24,7 @@ namespace QuixoUnity.UI
         [SerializeField] private Color generatedPlayer2Color = new(0.62f, 0.18f, 0.09f);
         [SerializeField] private Color generatedTextShadowColor = new(0.16f, 0.1f, 0.05f);
         [SerializeField] private float generatedMarkFontSize = 4.45f;
+        [SerializeField] private Shader generatedMaterialShader = null!;
 
         private BoardCellView[,] _cells = null!;
         private Action<int, int> _onCellClick = null!;
@@ -48,6 +50,8 @@ namespace QuixoUnity.UI
                 boardRoot = transform;
             }
 
+            CenterBoardInView();
+            ApplyActiveTheme();
             EnsureInputSupport();
 
             if (_cells != null && _cells.GetLength(0) == size)
@@ -251,7 +255,76 @@ namespace QuixoUnity.UI
 
             view.ConfigureReferences(renderer, text, marker, visual);
             view.ConfigureStyle(generatedCellColor, generatedSelectedCellColor, generatedPlayer1Color, generatedPlayer2Color);
+            view.ConfigureMarkFontSize(generatedMarkFontSize);
             return view;
+        }
+
+        private void CenterBoardInView()
+        {
+            if (transform.parent != null)
+            {
+                return;
+            }
+
+            var position = transform.position;
+            if (Mathf.Abs(position.z) < 0.01f)
+            {
+                transform.position = new Vector3(position.x, position.y, -0.45f);
+            }
+        }
+
+        private void ApplyActiveTheme()
+        {
+            GameplayTheme theme = SceneTransit.SelectedTheme;
+            if (theme == VisualThemeCatalog.DefaultTheme)
+            {
+                theme = VisualThemeCatalog.ActiveTheme;
+            }
+
+            ApplyTheme(VisualThemeCatalog.Get(theme));
+        }
+
+        public void ApplyTheme(GameplayPalette palette)
+        {
+            generatedCellColor = palette.Cube;
+            generatedTopColor = palette.CubeTop;
+            generatedSelectedCellColor = palette.SelectedCube;
+            generatedBoardColor = palette.Board;
+            generatedBoardTrimColor = palette.BoardTrim;
+            generatedSelectionColor = palette.Selection;
+            generatedPlayer1Color = palette.Player1;
+            generatedPlayer2Color = palette.Player2;
+            generatedMarkFontSize = palette.MarkFontSize;
+
+            if (_cells != null)
+            {
+                foreach (var cell in _cells)
+                {
+                    if (cell == null)
+                    {
+                        continue;
+                    }
+
+                    cell.ConfigureStyle(generatedCellColor, generatedSelectedCellColor, generatedPlayer1Color, generatedPlayer2Color);
+                    cell.ConfigureMarkFontSize(generatedMarkFontSize);
+                }
+            }
+
+            RenderSettings.ambientLight = palette.AmbientLight;
+            var mainCamera = Camera.main;
+            if (mainCamera != null)
+            {
+                mainCamera.backgroundColor = palette.CameraBackground;
+            }
+
+            var lights = FindObjectsOfType<Light>();
+            foreach (var sceneLight in lights)
+            {
+                if (sceneLight != null && sceneLight.type == LightType.Directional)
+                {
+                    sceneLight.color = palette.KeyLight;
+                }
+            }
         }
 
         private GameObject CreateGeneratedCell()
@@ -281,6 +354,7 @@ namespace QuixoUnity.UI
             var view = cell.AddComponent<BoardCellView>();
             view.ConfigureReferences(renderer, text, marker, visualRoot.transform);
             view.ConfigureStyle(generatedCellColor, generatedSelectedCellColor, generatedPlayer1Color, generatedPlayer2Color);
+            view.ConfigureMarkFontSize(generatedMarkFontSize);
             return cell;
         }
 
@@ -330,16 +404,21 @@ namespace QuixoUnity.UI
             bar.transform.localScale = localScale;
         }
 
-        private static Material CreateMaterial(Color color)
+        private Material CreateMaterial(Color color)
         {
-            var shader = Shader.Find("Standard");
+            var shader = GetSafeShader();
             if (shader == null)
             {
-                shader = Shader.Find("Universal Render Pipeline/Lit");
+                Debug.LogError("BoardViewRenderer: no compatible shader found for generated board materials.");
+                return null;
             }
 
-            var material = new Material(shader);
-            material.color = color;
+            var material = new Material(shader)
+            {
+                name = "QuixoGeneratedMaterial",
+            };
+
+            ApplyMaterialColor(material, color);
             if (material.HasProperty("_Glossiness"))
             {
                 material.SetFloat("_Glossiness", 0.18f);
@@ -350,7 +429,61 @@ namespace QuixoUnity.UI
                 material.SetFloat("_Smoothness", 0.18f);
             }
 
+            if (material.HasProperty("_Metallic"))
+            {
+                material.SetFloat("_Metallic", 0f);
+            }
+
             return material;
+        }
+
+        private Shader GetSafeShader()
+        {
+            if (generatedMaterialShader != null)
+            {
+                return generatedMaterialShader;
+            }
+
+            if (IsUsingScriptableRenderPipeline())
+            {
+                return Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Standard")
+                    ?? Shader.Find("Unlit/Color")
+                    ?? Shader.Find("Sprites/Default")
+                    ?? Shader.Find("UI/Default")
+                    ?? Shader.Find("Hidden/Internal-Colored");
+            }
+
+            return Shader.Find("Standard")
+                ?? Shader.Find("Unlit/Color")
+                ?? Shader.Find("Sprites/Default")
+                ?? Shader.Find("UI/Default")
+                ?? Shader.Find("Hidden/Internal-Colored");
+        }
+
+        private static bool IsUsingScriptableRenderPipeline()
+        {
+            return GraphicsSettings.currentRenderPipeline != null || QualitySettings.renderPipeline != null;
+        }
+
+        private static void ApplyMaterialColor(Material material, Color color)
+        {
+            if (material == null)
+            {
+                return;
+            }
+
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            material.color = color;
         }
 
         private void CreateBoardBase(int size)
@@ -384,7 +517,12 @@ namespace QuixoUnity.UI
             }
 
             var renderer = child.GetComponent<MeshRenderer>();
-            renderer.material = CreateMaterial(color);
+            var material = CreateMaterial(color);
+            if (material != null)
+            {
+                renderer.material = material;
+            }
+
             return child;
         }
 

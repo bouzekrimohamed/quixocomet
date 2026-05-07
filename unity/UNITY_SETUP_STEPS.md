@@ -36,21 +36,24 @@ Sur `MenuRoot`, ajouter le script :
 
 - `MenuController`
 
-Dans le `Canvas`, creer trois boutons :
+Dans le `Canvas`, creer quatre boutons :
 
 - `QuixoButton`
 - `QometButton`
+- `ThemeButton`
 - `QuitButton`
 
 Brancher les boutons dans l'Inspector :
 
 - `QuixoButton > On Click` : glisser `MenuRoot`, choisir `MenuController.StartQuixo`
 - `QometButton > On Click` : glisser `MenuRoot`, choisir `MenuController.StartQomet`
+- `MenuController.Theme Button` : glisser `ThemeButton` dans le champ
 - `QuitButton > On Click` : glisser `MenuRoot`, choisir `MenuController.Quit`
 
 UI conseillee :
 
 - titre : `Quixo / Qomet`
+- bouton theme : `Thème : MarineBlue`
 - boutons larges, texte lisible, couleurs sobres
 - `Canvas Scaler` : `Scale With Screen Size`, resolution `1920 x 1080`
 
@@ -70,8 +73,9 @@ Creer ou verifier les objets suivants :
 
 Parametres conseilles :
 
-- Position : `X 0`, `Y 6`, `Z -7`
-- Rotation : `X 55`, `Y 0`, `Z 0`
+- Position actuelle generee : `X 0`, `Y 7.2`, `Z -7.4`
+- Rotation actuelle generee : `X 48`, `Y 0`, `Z 0`
+- Orthographic Size : environ `4.9`
 - Tag : `MainCamera`
 - Ajouter `PhysicsRaycaster`
 
@@ -183,7 +187,50 @@ Dans `VisualPolishController`, si utilise :
    - clic sur une case voisine vide
    - changement de tour apres coup valide
 
-## 6. Si une reference est Missing
+## 6. Changer les couleurs / theme
+
+Le theme peut etre change directement dans le jeu depuis `MenuScene` avec le bouton :
+
+`Thème : MarineBlue`
+
+Il cycle dans cet ordre :
+
+1. `MarineBlue`
+2. `EmeraldGreen`
+3. `RoyalPurple`
+4. `ClassicWood`
+5. `PremiumDark`
+6. `CleanModern`
+
+Le choix est garde avec `PlayerPrefs` et s'applique au menu puis a `GameplayScene`.
+
+La valeur par defaut de la scene generee se change aussi dans :
+
+`Assets/Editor/QuixoSceneBuilder.cs`
+
+Chercher :
+
+```csharp
+// ===============================
+// CHANGE THEME HERE
+// Options:
+// ClassicWood, PremiumDark, CleanModern, MarineBlue, EmeraldGreen, RoyalPurple
+// ===============================
+private const GameplayTheme ActiveGameplayTheme = GameplayTheme.MarineBlue;
+```
+
+Remplacer `GameplayTheme.MarineBlue` par une des options :
+
+- `GameplayTheme.ClassicWood`
+- `GameplayTheme.PremiumDark`
+- `GameplayTheme.CleanModern`
+- `GameplayTheme.MarineBlue`
+- `GameplayTheme.EmeraldGreen`
+- `GameplayTheme.RoyalPurple`
+
+Ensuite relancer `Tools > Quixo > Create/Repair Scenes` pour regenerer `MenuScene` et `GameplayScene` avec le theme choisi.
+
+## 7. Si une reference est Missing
 
 - Ouvrir la scene concernee.
 - Selectionner l'objet qui porte le script.
@@ -201,7 +248,7 @@ References critiques :
 - `Main Camera` avec `PhysicsRaycaster`
 - scenes ajoutees dans `Build Settings`
 
-## 7. Role du Python
+## 8. Role du Python
 
 Le code Python reste utile comme reference de regles et comme ancienne application PySide6.
 Pour une V1 Unity etudiante, l'option la plus stable est de garder la logique native C# dans Unity.

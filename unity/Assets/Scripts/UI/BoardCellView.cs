@@ -21,6 +21,7 @@ namespace QuixoUnity.UI
         [SerializeField] private Color player2Color = new(0.62f, 0.18f, 0.09f);
         [SerializeField] private float hoverScale = 1.04f;
         [SerializeField] private float selectedLift = 0.09f;
+        [SerializeField] private float markFlipDuration = 0.24f;
 
         private int _row;
         private int _col;
@@ -28,9 +29,14 @@ namespace QuixoUnity.UI
         private Vector3 _baseScale;
         private Vector3 _baseVisualScale;
         private Vector3 _baseVisualPosition;
+        private Quaternion _baseVisualRotation;
+        private PlayerMark _currentMark = PlayerMark.None;
         private bool _hovered;
         private bool _selected;
+        private bool _hasRenderedState;
+        private bool _markAnimating;
         private Coroutine _feedbackRoutine = null!;
+        private Coroutine _markRoutine = null!;
 
         private Transform VisualTarget => visualRoot != null ? visualRoot : transform;
 
@@ -77,6 +83,15 @@ namespace QuixoUnity.UI
             player2Color = player2;
         }
 
+        public void ConfigureMarkFontSize(float fontSize)
+        {
+            if (markText != null && fontSize > 0f)
+            {
+                markText.fontSize = fontSize;
+                markText.ForceMeshUpdate();
+            }
+        }
+
         public void SetState(PlayerMark mark, bool selected)
         {
             _selected = selected;
@@ -86,23 +101,34 @@ namespace QuixoUnity.UI
                 PlayerMark.Player2 => "O",
                 _ => string.Empty,
             };
+
+            Color markColor = mark switch
+            {
+                PlayerMark.Player1 => player1Color,
+                PlayerMark.Player2 => player2Color,
+                _ => Color.clear,
+            };
+
+            bool shouldFlip = _hasRenderedState && _currentMark == PlayerMark.None && mark != PlayerMark.None;
+            _currentMark = mark;
+            _hasRenderedState = true;
+
             if (markText != null)
             {
-                PrepareMarkText();
-                markText.gameObject.SetActive(true);
-                markText.text = text;
-                markText.color = mark switch
+                if (shouldFlip && isActiveAndEnabled)
                 {
-                    PlayerMark.Player1 => player1Color,
-                    PlayerMark.Player2 => player2Color,
-                    _ => Color.clear,
-                };
-                markText.ForceMeshUpdate();
+                    PlayMarkFlip(text, markColor);
+                }
+                else
+                {
+                    StopMarkFlip();
+                    ApplyMarkText(text, markColor);
+                }
             }
 
             if (tileRenderer != null)
             {
-                tileRenderer.material.color = selected ? selectedColor : emptyColor;
+                ApplyRendererColor(tileRenderer, selected ? selectedColor : emptyColor);
             }
 
             if (selectionRing != null)
@@ -121,8 +147,11 @@ namespace QuixoUnity.UI
         public void ResetInteractionState()
         {
             StopFeedback();
+            StopMarkFlip();
             _hovered = false;
             _selected = false;
+            _currentMark = PlayerMark.None;
+            _hasRenderedState = false;
             if (selectionRing != null)
             {
                 selectionRing.enabled = false;
@@ -134,6 +163,12 @@ namespace QuixoUnity.UI
             }
 
             ApplyVisualPose();
+        }
+
+        private void OnDisable()
+        {
+            StopFeedback();
+            StopMarkFlip();
         }
 
         public void PlayMoveFeedback(float duration)
@@ -149,6 +184,14 @@ namespace QuixoUnity.UI
             }
 
             _feedbackRoutine = StartCoroutine(FeedbackRoutine(duration));
+        }
+
+        private void PlayMarkFlip(string text, Color color)
+        {
+            StopFeedback();
+            StopMarkFlip();
+            ApplyMarkText(string.Empty, Color.clear);
+            _markRoutine = StartCoroutine(MarkFlipRoutine(text, color, markFlipDuration));
         }
 
         public void OnPointerClick(PointerEventData eventData)
@@ -213,6 +256,60 @@ namespace QuixoUnity.UI
             _feedbackRoutine = null;
         }
 
+        private IEnumerator MarkFlipRoutine(string text, Color color, float duration)
+        {
+            var target = VisualTarget;
+            if (target == null || duration <= 0f)
+            {
+                ApplyMarkText(text, color);
+                yield break;
+            }
+
+            _markAnimating = true;
+            float half = Mathf.Max(duration * 0.5f, 0.01f);
+            float elapsed = 0f;
+            const float peakAngle = 82f;
+
+            while (elapsed < half)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / half);
+                ApplyFlipPose(target, Mathf.Lerp(0f, peakAngle, EaseOutCubic(t)), Mathf.Lerp(1f, 1.06f, t));
+                yield return null;
+            }
+
+            ApplyMarkText(text, color);
+
+            elapsed = 0f;
+            while (elapsed < half)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / half);
+                ApplyFlipPose(target, Mathf.Lerp(peakAngle, 0f, EaseOutCubic(t)), Mathf.Lerp(1.06f, 1f, t));
+                yield return null;
+            }
+
+            _markAnimating = false;
+            _markRoutine = null;
+            ApplyVisualPose();
+        }
+
+        private void StopMarkFlip()
+        {
+            if (_markRoutine != null)
+            {
+                StopCoroutine(_markRoutine);
+                _markRoutine = null;
+            }
+
+            _markAnimating = false;
+            var target = VisualTarget;
+            if (target != null)
+            {
+                target.localRotation = _baseVisualRotation;
+            }
+        }
+
         private void ResolveReferences()
         {
             if (tileRenderer == null)
@@ -259,6 +356,7 @@ namespace QuixoUnity.UI
             var target = VisualTarget;
             _baseVisualScale = target.localScale;
             _baseVisualPosition = target.localPosition;
+            _baseVisualRotation = target.localRotation;
         }
 
         private void ApplyVisualPose()
@@ -267,6 +365,10 @@ namespace QuixoUnity.UI
             float scale = _hovered ? hoverScale : 1f;
             target.localScale = _baseVisualScale * scale;
             target.localPosition = _baseVisualPosition + (_selected ? Vector3.up * selectedLift : Vector3.zero);
+            if (!_markAnimating)
+            {
+                target.localRotation = _baseVisualRotation;
+            }
         }
 
         private void PrepareMarkText()
@@ -280,6 +382,54 @@ namespace QuixoUnity.UI
             {
                 textRenderer.sortingOrder = 2;
             }
+        }
+
+        private void ApplyMarkText(string text, Color color)
+        {
+            if (markText == null)
+            {
+                return;
+            }
+
+            PrepareMarkText();
+            markText.gameObject.SetActive(true);
+            markText.text = text;
+            markText.color = color;
+            markText.ForceMeshUpdate();
+        }
+
+        private void ApplyFlipPose(Transform target, float angle, float scale)
+        {
+            target.localScale = _baseVisualScale * scale;
+            target.localPosition = _baseVisualPosition + (_selected ? Vector3.up * selectedLift : Vector3.zero);
+            target.localRotation = _baseVisualRotation * Quaternion.Euler(0f, angle, 0f);
+        }
+
+        private static float EaseOutCubic(float t)
+        {
+            float inv = 1f - t;
+            return 1f - inv * inv * inv;
+        }
+
+        private static void ApplyRendererColor(Renderer targetRenderer, Color color)
+        {
+            if (targetRenderer == null || targetRenderer.material == null)
+            {
+                return;
+            }
+
+            var material = targetRenderer.material;
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            material.color = color;
         }
     }
 }

@@ -39,6 +39,7 @@ namespace QuixoUnity.UI
         private void Awake()
         {
             ResolveReferences();
+            ApplyActiveTheme();
 
             if (turnLabel != null)
             {
@@ -88,6 +89,7 @@ namespace QuixoUnity.UI
             }
 
             _controller = controller;
+            ApplyActiveTheme();
             BindButton(restartButton, controller.RestartGame);
             BindButton(menuButton, controller.ReturnToMenu);
             BindButton(upButton, PlayUp);
@@ -349,6 +351,73 @@ namespace QuixoUnity.UI
             CacheDirectionButton(downButton);
             CacheDirectionButton(leftButton);
             CacheDirectionButton(rightButton);
+        }
+
+        private void ApplyActiveTheme()
+        {
+            GameplayTheme theme = SceneTransit.SelectedTheme;
+            if (theme == VisualThemeCatalog.DefaultTheme)
+            {
+                theme = VisualThemeCatalog.ActiveTheme;
+            }
+
+            ApplyTheme(VisualThemeCatalog.Get(theme));
+        }
+
+        public void ApplyTheme(GameplayPalette palette)
+        {
+            turnPlayer1Color = palette.Player1;
+            turnPlayer2Color = palette.Player2;
+
+            if (turnLabel != null)
+            {
+                turnLabel.color = turnPlayer1Color;
+            }
+
+            if (infoLabel != null)
+            {
+                infoLabel.color = palette.UiMuted;
+            }
+
+            ApplyButtonTheme(restartButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(menuButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(upButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(downButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(leftButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(rightButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+        }
+
+        private void ApplyButtonTheme(Button button, Color normalColor, Color textColor, Color disabledColor)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            var colors = button.colors;
+            colors.normalColor = normalColor;
+            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.18f);
+            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
+            colors.selectedColor = colors.highlightedColor;
+            colors.disabledColor = disabledColor;
+            colors.fadeDuration = 0.12f;
+            button.colors = colors;
+
+            if (button.targetGraphic != null)
+            {
+                button.targetGraphic.color = button.interactable ? normalColor : disabledColor;
+            }
+
+            var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null)
+            {
+                label.color = textColor;
+            }
+
+            if (_directionBaseColors.ContainsKey(button))
+            {
+                _directionBaseColors[button] = colors;
+            }
         }
 
         private T FindChildComponent<T>(string childName) where T : Component

@@ -8,6 +8,7 @@ using UnityEditor.Events;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -18,89 +19,12 @@ namespace QuixoUnity.EditorTools
         private const string ScenesFolder = "Assets/Scenes";
         private const string MenuScenePath = "Assets/Scenes/MenuScene.unity";
         private const string GameplayScenePath = "Assets/Scenes/GameplayScene.unity";
-        private const GameplayTheme ActiveGameplayTheme = GameplayTheme.ClassicWood;
-
-        private enum GameplayTheme
-        {
-            ClassicWood,
-            PremiumDark,
-            CleanModern,
-        }
-
-        private readonly struct GameplayPalette
-        {
-            public GameplayPalette(
-                Color ambientLight,
-                Color cameraBackground,
-                Color board,
-                Color boardTrim,
-                Color cube,
-                Color cubeTop,
-                Color selectedCube,
-                Color selection,
-                Color player1,
-                Color player2,
-                Color uiPanel,
-                Color uiButton,
-                Color uiButtonSecondary,
-                Color uiButtonDisabled,
-                Color uiText,
-                Color uiMuted,
-                Color keyLight,
-                float cameraSize,
-                float boardScale,
-                float markFontSize)
-            {
-                AmbientLight = ambientLight;
-                CameraBackground = cameraBackground;
-                Board = board;
-                BoardTrim = boardTrim;
-                Cube = cube;
-                CubeTop = cubeTop;
-                SelectedCube = selectedCube;
-                Selection = selection;
-                Player1 = player1;
-                Player2 = player2;
-                UiPanel = uiPanel;
-                UiButton = uiButton;
-                UiButtonSecondary = uiButtonSecondary;
-                UiButtonDisabled = uiButtonDisabled;
-                UiText = uiText;
-                UiMuted = uiMuted;
-                KeyLight = keyLight;
-                CameraSize = cameraSize;
-                BoardScale = boardScale;
-                MarkFontSize = markFontSize;
-            }
-
-            public Color AmbientLight { get; }
-            public Color CameraBackground { get; }
-            public Color Board { get; }
-            public Color BoardTrim { get; }
-            public Color Cube { get; }
-            public Color CubeTop { get; }
-            public Color SelectedCube { get; }
-            public Color Selection { get; }
-            public Color Player1 { get; }
-            public Color Player2 { get; }
-            public Color UiPanel { get; }
-            public Color UiButton { get; }
-            public Color UiButtonSecondary { get; }
-            public Color UiButtonDisabled { get; }
-            public Color UiText { get; }
-            public Color UiMuted { get; }
-            public Color KeyLight { get; }
-            public float CameraSize { get; }
-            public float BoardScale { get; }
-            public float MarkFontSize { get; }
-        }
-
-        private static readonly Color BackgroundColor = new(0.08f, 0.1f, 0.13f);
-        private static readonly Color PanelColor = new(0.13f, 0.16f, 0.2f, 0.92f);
-        private static readonly Color PrimaryColor = new(0.25f, 0.47f, 0.95f);
-        private static readonly Color SecondaryColor = new(0.95f, 0.45f, 0.28f);
-        private static readonly Color TextColor = new(0.94f, 0.96f, 0.98f);
-        private static readonly Color MutedTextColor = new(0.72f, 0.77f, 0.84f);
+        // ===============================
+        // CHANGE THEME HERE
+        // Options:
+        // ClassicWood, PremiumDark, CleanModern, MarineBlue, EmeraldGreen, RoyalPurple
+        // ===============================
+        private const GameplayTheme ActiveGameplayTheme = GameplayTheme.MarineBlue;
 
         [MenuItem("Tools/Quixo/Create/Repair Scenes")]
         public static void CreateOrRepairScenes()
@@ -129,42 +53,46 @@ namespace QuixoUnity.EditorTools
 
         private static void CreateMenuScene()
         {
+            var palette = VisualThemeCatalog.Get(ActiveGameplayTheme);
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
-            RenderSettings.ambientLight = new Color(0.3f, 0.32f, 0.36f);
+            RenderSettings.ambientLight = palette.AmbientLight;
 
             CreateEventSystem();
 
             var canvas = CreateCanvas("Canvas");
-            CreateFullScreenImage(canvas.transform, "Background", BackgroundColor);
+            CreateFullScreenImage(canvas.transform, "Background", palette.MenuBackground);
 
             var menuRoot = new GameObject("MenuRoot");
             var menuController = menuRoot.AddComponent<MenuController>();
 
-            var panel = CreatePanel(canvas.transform, "MenuPanel", new Vector2(560f, 560f), PanelColor);
-            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(560f, 560f));
+            var panel = CreatePanel(canvas.transform, "MenuPanel", new Vector2(600f, 640f), palette.MenuPanel);
+            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(0f, 0f), new Vector2(600f, 640f));
 
-            CreateText(panel.transform, "Title", "Quixo / Qomet", 44f, TextAlignmentOptions.Center, TextColor,
-                new Vector2(0.5f, 1f), new Vector2(0f, -78f), new Vector2(480f, 72f));
-            CreateText(panel.transform, "Subtitle", "Choisissez un mode de jeu local", 22f, TextAlignmentOptions.Center, MutedTextColor,
-                new Vector2(0.5f, 1f), new Vector2(0f, -140f), new Vector2(480f, 44f));
+            CreateText(panel.transform, "Title", "Quixo / Qomet", 44f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -76f), new Vector2(500f, 72f));
+            CreateText(panel.transform, "Subtitle", "Choisissez un mode de jeu local", 22f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -136f), new Vector2(500f, 44f));
 
-            var quixoButton = CreateButton(panel.transform, "QuixoButton", "Jouer Quixo", PrimaryColor,
-                new Vector2(0.5f, 1f), new Vector2(0f, -235f), new Vector2(360f, 68f));
-            var qometButton = CreateButton(panel.transform, "QometButton", "Jouer Qomet", SecondaryColor,
-                new Vector2(0.5f, 1f), new Vector2(0f, -325f), new Vector2(360f, 68f));
-            var quitButton = CreateButton(panel.transform, "QuitButton", "Quitter", new Color(0.28f, 0.32f, 0.38f),
-                new Vector2(0.5f, 1f), new Vector2(0f, -415f), new Vector2(360f, 60f));
+            var quixoButton = CreateButton(panel.transform, "QuixoButton", "Jouer Quixo", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(380f, 68f), palette.UiText, palette.UiButtonDisabled);
+            var qometButton = CreateButton(panel.transform, "QometButton", "Jouer Qomet", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -306f), new Vector2(380f, 68f), palette.UiText, palette.UiButtonDisabled);
+            var themeButton = CreateButton(panel.transform, "ThemeButton", $"Thème : {VisualThemeCatalog.DisplayName(ActiveGameplayTheme)}", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -390f), new Vector2(380f, 62f), palette.UiText, palette.UiButtonDisabled);
+            var quitButton = CreateButton(panel.transform, "QuitButton", "Quitter", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -472f), new Vector2(380f, 60f), palette.UiText, palette.UiButtonDisabled);
 
             UnityEventTools.AddPersistentListener(quixoButton.onClick, menuController.StartQuixo);
             UnityEventTools.AddPersistentListener(qometButton.onClick, menuController.StartQomet);
             UnityEventTools.AddPersistentListener(quitButton.onClick, menuController.Quit);
+            AssignObject(menuController, "themeButton", themeButton);
 
             EditorSceneManager.SaveScene(scene, MenuScenePath);
         }
 
         private static void CreateGameplayScene()
         {
-            var palette = GetPalette(ActiveGameplayTheme);
+            var palette = VisualThemeCatalog.Get(ActiveGameplayTheme);
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
             RenderSettings.ambientLight = palette.AmbientLight;
 
@@ -173,6 +101,7 @@ namespace QuixoUnity.EditorTools
             CreateEventSystem();
 
             var boardViewObject = new GameObject("BoardView");
+            boardViewObject.transform.position = new Vector3(0f, 0f, -0.45f);
             boardViewObject.transform.localScale = Vector3.one * palette.BoardScale;
             var boardView = boardViewObject.AddComponent<BoardViewRenderer>();
 
@@ -209,79 +138,26 @@ namespace QuixoUnity.EditorTools
             AssignColor(boardView, "generatedPlayer1Color", palette.Player1);
             AssignColor(boardView, "generatedPlayer2Color", palette.Player2);
             AssignFloat(boardView, "generatedMarkFontSize", palette.MarkFontSize);
+            AssignObject(boardView, "generatedMaterialShader", GetSafeBoardShader());
         }
 
-        private static GameplayPalette GetPalette(GameplayTheme theme)
+        private static Shader GetSafeBoardShader()
         {
-            switch (theme)
+            if (GraphicsSettings.currentRenderPipeline != null || QualitySettings.renderPipeline != null)
             {
-                case GameplayTheme.PremiumDark:
-                    return new GameplayPalette(
-                        new Color(0.44f, 0.42f, 0.38f),
-                        new Color(0.08f, 0.09f, 0.11f),
-                        new Color(0.72f, 0.5f, 0.23f),
-                        new Color(0.43f, 0.28f, 0.12f),
-                        new Color(0.96f, 0.91f, 0.78f),
-                        new Color(1f, 0.96f, 0.84f),
-                        new Color(1f, 0.88f, 0.52f),
-                        new Color(1f, 0.73f, 0.18f),
-                        new Color(0.16f, 0.45f, 0.95f),
-                        new Color(0.95f, 0.38f, 0.08f),
-                        new Color(0.02f, 0.025f, 0.03f, 0.32f),
-                        new Color(0.18f, 0.28f, 0.42f),
-                        new Color(0.34f, 0.24f, 0.14f),
-                        new Color(0.11f, 0.12f, 0.14f, 0.58f),
-                        new Color(0.96f, 0.94f, 0.88f),
-                        new Color(0.76f, 0.78f, 0.82f),
-                        new Color(1f, 0.9f, 0.68f),
-                        4.85f,
-                        1.45f,
-                        4.55f);
-                case GameplayTheme.CleanModern:
-                    return new GameplayPalette(
-                        new Color(0.86f, 0.86f, 0.82f),
-                        new Color(0.78f, 0.8f, 0.82f),
-                        new Color(0.73f, 0.56f, 0.34f),
-                        new Color(0.51f, 0.37f, 0.2f),
-                        new Color(0.94f, 0.87f, 0.71f),
-                        new Color(1f, 0.94f, 0.78f),
-                        new Color(1f, 0.92f, 0.68f),
-                        new Color(0.95f, 0.65f, 0.18f),
-                        new Color(0.03f, 0.18f, 0.4f),
-                        new Color(0.78f, 0.28f, 0.2f),
-                        new Color(1f, 0.98f, 0.92f, 0.32f),
-                        new Color(0.16f, 0.36f, 0.58f),
-                        new Color(0.46f, 0.43f, 0.38f),
-                        new Color(0.74f, 0.73f, 0.69f, 0.58f),
-                        new Color(0.12f, 0.13f, 0.14f),
-                        new Color(0.28f, 0.29f, 0.3f),
-                        new Color(1f, 0.94f, 0.82f),
-                        4.85f,
-                        1.45f,
-                        4.5f);
-                default:
-                    return new GameplayPalette(
-                        new Color(0.82f, 0.78f, 0.69f),
-                        new Color(0.8f, 0.74f, 0.62f),
-                        new Color(0.7f, 0.51f, 0.29f),
-                        new Color(0.46f, 0.31f, 0.15f),
-                        new Color(0.92f, 0.82f, 0.62f),
-                        new Color(1f, 0.91f, 0.7f),
-                        new Color(1f, 0.9f, 0.6f),
-                        new Color(1f, 0.74f, 0.16f),
-                        new Color(0.04f, 0.14f, 0.34f),
-                        new Color(0.62f, 0.18f, 0.09f),
-                        new Color(0.16f, 0.1f, 0.04f, 0.22f),
-                        new Color(0.58f, 0.38f, 0.17f),
-                        new Color(0.39f, 0.27f, 0.16f),
-                        new Color(0.52f, 0.46f, 0.36f, 0.58f),
-                        new Color(0.98f, 0.94f, 0.84f),
-                        new Color(0.88f, 0.8f, 0.66f),
-                        new Color(1f, 0.94f, 0.78f),
-                        4.85f,
-                        1.45f,
-                        4.55f);
+                return Shader.Find("Universal Render Pipeline/Lit")
+                    ?? Shader.Find("Standard")
+                    ?? Shader.Find("Unlit/Color")
+                    ?? Shader.Find("Sprites/Default")
+                    ?? Shader.Find("UI/Default")
+                    ?? Shader.Find("Hidden/Internal-Colored");
             }
+
+            return Shader.Find("Standard")
+                ?? Shader.Find("Unlit/Color")
+                ?? Shader.Find("Sprites/Default")
+                ?? Shader.Find("UI/Default")
+                ?? Shader.Find("Hidden/Internal-Colored");
         }
 
         private static void BuildGameplayHud(Transform canvas, HudView hudView, GameplayPalette palette)
@@ -335,8 +211,8 @@ namespace QuixoUnity.EditorTools
         {
             var cameraObject = new GameObject("Main Camera");
             cameraObject.tag = "MainCamera";
-            cameraObject.transform.position = new Vector3(0f, 7f, -7f);
-            cameraObject.transform.rotation = Quaternion.Euler(55f, 0f, 0f);
+            cameraObject.transform.position = new Vector3(0f, 7.2f, -7.4f);
+            cameraObject.transform.rotation = Quaternion.Euler(48f, 0f, 0f);
 
             var camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
@@ -486,7 +362,7 @@ namespace QuixoUnity.EditorTools
 
             SetAnchored(buttonObject.GetComponent<RectTransform>(), anchor, anchoredPosition, size);
 
-            var text = CreateText(buttonObject.transform, "Text", label, 20f, TextAlignmentOptions.Center, textColor ?? TextColor,
+            var text = CreateText(buttonObject.transform, "Text", label, 20f, TextAlignmentOptions.Center, textColor ?? Color.white,
                 new Vector2(0.5f, 0.5f), Vector2.zero, size);
             text.enableAutoSizing = true;
             text.fontSizeMin = 12f;
