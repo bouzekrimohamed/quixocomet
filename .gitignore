@@ -19,3 +19,7 @@ cometquixo/
 unity/game/
 unity/Assets/TextMesh Pro/Examples & Extras/
 unity/Assets/TextMesh Pro/Documentation/
+unity/Assets/Scripts/Auth/SupabaseLocalConfig.cs
+unity/Assets/Scripts/Auth/SupabaseLocalConfig.cs.meta
+
+unity/BuildWindows/

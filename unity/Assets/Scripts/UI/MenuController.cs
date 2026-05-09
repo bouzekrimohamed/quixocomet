@@ -107,7 +107,7 @@ namespace QuixoUnity.UI
 
             if (_themeButtonLabel != null)
             {
-                _themeButtonLabel.text = $"Thème : {VisualThemeCatalog.DisplayName(VisualThemeCatalog.ActiveTheme)}";
+                _themeButtonLabel.text = $"Theme : {VisualThemeCatalog.DisplayName(VisualThemeCatalog.ActiveTheme)}";
             }
         }
 

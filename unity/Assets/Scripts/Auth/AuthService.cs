@@ -1,0 +1,456 @@
+using System;
+using System.Collections;
+using System.Text;
+using UnityEngine;
+using UnityEngine.Networking;
+
+namespace QuixoUnity.Auth
+{
+    public sealed class AuthService : MonoBehaviour
+    {
+        private const string PendingUsernamePrefix = "Quixo.Auth.PendingUsername.";
+
+        public void Register(string email, string password, string username, Action<AuthOperationResult> onComplete)
+        {
+            if (!ValidateInput(email, password, onComplete))
+            {
+                return;
+            }
+
+            string cleanEmail = email.Trim();
+            SavePendingUsername(cleanEmail, username);
+            StartCoroutine(AuthRoutine("signup", cleanEmail, password, username, true, onComplete));
+        }
+
+        public void Login(string identifier, string password, Action<AuthOperationResult> onComplete)
+        {
+            if (!ValidateLoginInput(identifier, password, onComplete))
+            {
+                return;
+            }
+
+            StartCoroutine(LoginRoutine(identifier.Trim(), password, onComplete));
+        }
+
+        public void SendPasswordReset(string email, Action<AuthOperationResult> onComplete)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre email."));
+                return;
+            }
+
+            if (!email.Contains("@"))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Pour reinitialiser le mot de passe, entrez votre email."));
+                return;
+            }
+
+            if (!SupabaseSettings.IsConfigured)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure."));
+                return;
+            }
+
+            StartCoroutine(PasswordResetRoutine(email.Trim(), onComplete));
+        }
+
+        public void FetchCurrentProfile(Action<AuthOperationResult> onComplete)
+        {
+            if (!SupabaseSettings.IsConfigured)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure."));
+                return;
+            }
+
+            if (!SessionManager.IsOnline)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Aucune session en ligne active."));
+                return;
+            }
+
+            StartCoroutine(FetchProfileRoutine(SessionManager.UserId, onComplete));
+        }
+
+        public void Logout()
+        {
+            SessionManager.ClearSession();
+        }
+
+        private IEnumerator LoginRoutine(string identifier, string password, Action<AuthOperationResult> onComplete)
+        {
+            if (identifier.Contains("@"))
+            {
+                yield return AuthRoutine("token?grant_type=password", identifier, password, string.Empty, false, onComplete);
+                yield break;
+            }
+
+            string resolvedEmail = null;
+            string lookupError = null;
+            yield return ResolveEmailFromUsernameRoutine(identifier, result =>
+            {
+                if (result.Success && result.Profile != null)
+                {
+                    resolvedEmail = result.Profile.email;
+                }
+                else
+                {
+                    lookupError = result.Message;
+                }
+            });
+
+            if (string.IsNullOrWhiteSpace(resolvedEmail))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail(string.IsNullOrWhiteSpace(lookupError) ? "Utilisateur introuvable." : lookupError));
+                yield break;
+            }
+
+            yield return AuthRoutine("token?grant_type=password", resolvedEmail, password, string.Empty, false, onComplete);
+        }
+
+        private IEnumerator AuthRoutine(string endpoint, string email, string password, string requestedUsername, bool createProfile, Action<AuthOperationResult> onComplete)
+        {
+            if (!SupabaseSettings.IsConfigured)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure. Renseignez l'URL et la cle anon publique."));
+                yield break;
+            }
+
+            var payload = new AuthEmailRequest
+            {
+                email = email,
+                password = password
+            };
+
+            string url = $"{SupabaseSettings.Url}/auth/v1/{endpoint}";
+            using var request = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload), string.Empty);
+            yield return request.SendWebRequest();
+
+            if (!IsSuccess(request))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Connexion impossible.")));
+                yield break;
+            }
+
+            var authResponse = UnityEngine.JsonUtility.FromJson<AuthResponse>(request.downloadHandler.text);
+            if (authResponse == null || authResponse.user == null)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Reponse Supabase invalide."));
+                yield break;
+            }
+
+            if (string.IsNullOrWhiteSpace(authResponse.access_token))
+            {
+                onComplete?.Invoke(AuthOperationResult.Ok("Compte cree. Verifiez votre email si Supabase demande une confirmation.", authResponse));
+                yield break;
+            }
+
+            SessionManager.SaveSession(authResponse);
+            if (createProfile)
+            {
+                string username = string.IsNullOrWhiteSpace(requestedUsername) ? GenerateUsername(email) : SanitizeUsername(requestedUsername);
+                yield return EnsureProfileRoutine(authResponse, username, onComplete);
+                yield break;
+            }
+
+            AuthOperationResult profileResult = null;
+            yield return FetchProfileRoutine(authResponse.user.id, result => profileResult = result);
+            if (profileResult != null && profileResult.Success)
+            {
+                onComplete?.Invoke(AuthOperationResult.Ok("Connecte.", authResponse, profileResult.Profile));
+                yield break;
+            }
+
+            string fallbackUsername = ConsumePendingUsername(email);
+            if (string.IsNullOrWhiteSpace(fallbackUsername))
+            {
+                fallbackUsername = GenerateUsername(email);
+            }
+
+            yield return EnsureProfileRoutine(authResponse, fallbackUsername, onComplete);
+        }
+
+        private IEnumerator EnsureProfileRoutine(AuthResponse session, string username, Action<AuthOperationResult> onComplete)
+        {
+            string displayName = username;
+            var payload = new ProfileUpsertRequest
+            {
+                id = session.user.id,
+                username = username,
+                display_name = displayName,
+                email = session.user.email
+            };
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/profiles?on_conflict=id";
+            using var request = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload), session.access_token);
+            request.SetRequestHeader("Prefer", "resolution=merge-duplicates,return=representation");
+            yield return request.SendWebRequest();
+
+            if (!IsSuccess(request))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Session creee, mais le profil n'a pas pu etre cree.")));
+                yield break;
+            }
+
+            var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
+            ProfileDto profile = profiles.Count > 0 ? profiles[0] : new ProfileDto
+            {
+                id = session.user.id,
+                username = username,
+                display_name = displayName,
+                email = session.user.email
+            };
+
+            SessionManager.SaveSession(session, profile);
+            onComplete?.Invoke(AuthOperationResult.Ok("Connecte.", session, profile));
+        }
+
+        private IEnumerator FetchProfileRoutine(string userId, Action<AuthOperationResult> onComplete)
+        {
+            string url = $"{SupabaseSettings.Url}/rest/v1/profiles?id=eq.{UnityWebRequest.EscapeURL(userId)}&select=id,username,display_name,email,created_at";
+            using var request = CreateJsonRequest(url, "GET", null, SessionManager.AccessToken);
+            yield return request.SendWebRequest();
+
+            if (!IsSuccess(request))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Profil inaccessible.")));
+                yield break;
+            }
+
+            var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
+            if (profiles.Count == 0)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Profil introuvable."));
+                yield break;
+            }
+
+            SessionManager.SaveProfile(profiles[0]);
+            onComplete?.Invoke(AuthOperationResult.Ok("Profil charge.", null, profiles[0]));
+        }
+
+        private IEnumerator ResolveEmailFromUsernameRoutine(string username, Action<AuthOperationResult> onComplete)
+        {
+            if (!SupabaseSettings.IsConfigured)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure."));
+                yield break;
+            }
+
+            string safeUsername = UnityWebRequest.EscapeURL(NormalizeUsernameForLookup(username));
+            string url = $"{SupabaseSettings.Url}/rest/v1/profiles?username=eq.{safeUsername}&select=id,username,display_name,email,created_at&limit=1";
+            using var request = CreateJsonRequest(url, "GET", null, string.Empty);
+            yield return request.SendWebRequest();
+
+            if (!IsSuccess(request))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Utilisateur introuvable.")));
+                yield break;
+            }
+
+            var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
+            if (profiles.Count == 0 || string.IsNullOrWhiteSpace(profiles[0].email))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Utilisateur introuvable."));
+                yield break;
+            }
+
+            onComplete?.Invoke(AuthOperationResult.Ok("Utilisateur trouve.", null, profiles[0]));
+        }
+
+        private IEnumerator PasswordResetRoutine(string email, Action<AuthOperationResult> onComplete)
+        {
+            var payload = new PasswordRecoveryRequest
+            {
+                email = email,
+                redirect_to = SupabaseSettings.PasswordResetRedirectUrl
+            };
+
+            string url = $"{SupabaseSettings.Url}/auth/v1/recover";
+            using var request = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload), string.Empty);
+            yield return request.SendWebRequest();
+
+            if (!IsSuccess(request))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Email de reinitialisation impossible.")));
+                yield break;
+            }
+
+            onComplete?.Invoke(AuthOperationResult.Ok("Email de reinitialisation envoye."));
+        }
+
+        private static UnityWebRequest CreateJsonRequest(string url, string method, string json, string accessToken)
+        {
+            var request = new UnityWebRequest(url, method)
+            {
+                downloadHandler = new DownloadHandlerBuffer()
+            };
+
+            if (json != null)
+            {
+                byte[] bytes = Encoding.UTF8.GetBytes(json);
+                request.uploadHandler = new UploadHandlerRaw(bytes);
+                request.SetRequestHeader("Content-Type", "application/json");
+            }
+
+            request.SetRequestHeader("apikey", SupabaseSettings.PublicAnonKey);
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                request.SetRequestHeader("Authorization", $"Bearer {accessToken}");
+            }
+
+            return request;
+        }
+
+        private static bool ValidateInput(string email, string password, Action<AuthOperationResult> onComplete)
+        {
+            if (string.IsNullOrWhiteSpace(email) || !email.Contains("@"))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Email invalide."));
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 6)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Mot de passe trop court. Minimum 6 caracteres."));
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool ValidateLoginInput(string identifier, string password, Action<AuthOperationResult> onComplete)
+        {
+            if (string.IsNullOrWhiteSpace(identifier))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre email ou username."));
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(password) || password.Length < 6)
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Mot de passe trop court. Minimum 6 caracteres."));
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool IsSuccess(UnityWebRequest request)
+        {
+            return request.result == UnityWebRequest.Result.Success && request.responseCode >= 200 && request.responseCode < 300;
+        }
+
+        private static string ParseError(UnityWebRequest request, string fallback)
+        {
+            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.DataProcessingError)
+            {
+                return "Connexion internet ou serveur indisponible.";
+            }
+
+            string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+            if (!string.IsNullOrWhiteSpace(body))
+            {
+                string lowerBody = body.ToLowerInvariant();
+                if (lowerBody.Contains("invalid login") || lowerBody.Contains("invalid credentials"))
+                {
+                    return "Identifiants incorrects.";
+                }
+
+                var parsed = UnityEngine.JsonUtility.FromJson<AuthResponse>(body);
+                if (parsed != null)
+                {
+                    if (!string.IsNullOrWhiteSpace(parsed.error_description))
+                    {
+                        return parsed.error_description;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(parsed.msg))
+                    {
+                        return parsed.msg;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(parsed.error))
+                    {
+                        return parsed.error;
+                    }
+                }
+            }
+
+            return fallback;
+        }
+
+        private static string GenerateUsername(string email)
+        {
+            string prefix = email.Split('@')[0];
+            return SanitizeUsername(prefix) + UnityEngine.Random.Range(100, 999).ToString();
+        }
+
+        private static void SavePendingUsername(string email, string username)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                return;
+            }
+
+            string value = string.IsNullOrWhiteSpace(username) ? GenerateUsername(email) : SanitizeUsername(username);
+            PlayerPrefs.SetString(PendingUsernamePrefix + email.ToLowerInvariant(), value);
+            PlayerPrefs.Save();
+        }
+
+        private static string ConsumePendingUsername(string email)
+        {
+            string key = PendingUsernamePrefix + email.ToLowerInvariant();
+            string value = PlayerPrefs.GetString(key, string.Empty);
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                PlayerPrefs.DeleteKey(key);
+                PlayerPrefs.Save();
+            }
+
+            return value;
+        }
+
+        private static string SanitizeUsername(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return "player" + UnityEngine.Random.Range(1000, 9999).ToString();
+            }
+
+            var builder = new StringBuilder();
+            foreach (char c in raw.Trim().ToLowerInvariant())
+            {
+                if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
+                {
+                    builder.Append(c);
+                }
+            }
+
+            if (builder.Length < 3)
+            {
+                builder.Append(UnityEngine.Random.Range(100, 999).ToString());
+            }
+
+            return builder.ToString();
+        }
+
+        private static string NormalizeUsernameForLookup(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (char c in raw.Trim().ToLowerInvariant())
+            {
+                if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
+                {
+                    builder.Append(c);
+                }
+            }
+
+            return builder.ToString();
+        }
+    }
+}

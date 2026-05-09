@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quixo Qomet - Reset Password</title>
+  <link rel="stylesheet" href="./style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+  <main class="shell">
+    <div class="stars" aria-hidden="true"></div>
+    <div class="cube cube-a" aria-hidden="true">X</div>
+    <div class="cube cube-b" aria-hidden="true">O</div>
+    <section class="card" aria-labelledby="title">
+      <p class="eyebrow">Quixo Qomet</p>
+      <h1 id="title">Réinitialisation du mot de passe</h1>
+      <p class="subtitle">Choisissez un nouveau mot de passe pour retourner dans le jeu.</p>
+
+      <form id="reset-form" autocomplete="off">
+        <label for="password">Nouveau mot de passe</label>
+        <input id="password" name="password" type="password" minlength="6" autocomplete="new-password" required>
+
+        <label for="confirm-password">Confirmer le mot de passe</label>
+        <input id="confirm-password" name="confirm-password" type="password" minlength="6" autocomplete="new-password" required>
+
+        <button id="submit-button" type="submit">Mettre à jour le mot de passe</button>
+      </form>
+
+      <p id="message" class="message" role="status" aria-live="polite"></p>
+      <p class="powered">Powered by Mohamed Bouzekri</p>
+    </section>
+  </main>
+  <script src="./app.js"></script>
+</body>
+</html>

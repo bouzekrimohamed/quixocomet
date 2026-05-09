@@ -1,199 +1,92 @@
 # Unity Setup Steps
 
-Ce projet contient la logique C# Unity, mais aucune scene `.unity` n'est versionnee dans `Assets/Scenes`.
-Ces etapes creent la V1 jouable localement sans connecter Python a Unity.
+Ce projet contient le jeu Unity natif Quixo/Qomet, avec intro video, splash fallback, authentification Supabase, profil, amis, menu premium et jeu local.
+Le Python reste separe et ne doit pas etre connecte a Unity pour cette version.
 
 ## 1. Ouvrir le projet
 
 1. Ouvrir Unity Hub.
-2. Ajouter le projet avec le dossier `C:/quixo/unity`.
-3. Utiliser Unity `2022.3.40f1` si possible, car `ProjectSettings/ProjectVersion.txt` cible cette version.
-4. Si Unity propose une mise a niveau de version, accepter seulement apres avoir sauvegarde/commite le projet.
+2. Ajouter le projet avec le dossier `C:/Users/lm_bo/Documents/PROJET/quixocomet/unity`.
+3. Utiliser Unity `2022.3.40f1` si possible.
+4. Si Unity propose une mise a niveau, sauvegarder le projet avant d'accepter.
 
-## 2. Creer les scenes
+## 2. Generer les scenes
 
-Creer deux scenes dans `Assets/Scenes` :
+Dans Unity :
 
-1. `MenuScene.unity`
-2. `GameplayScene.unity`
+1. Stop Play si necessaire.
+2. `Assets > Refresh`.
+3. `Tools > Quixo > Create/Repair Scenes`.
 
-Ajouter ensuite ces scenes dans `File > Build Settings... > Scenes In Build`, dans cet ordre :
+Le Scene Builder cree/repare ces scenes dans `Assets/Scenes` :
 
-1. `Assets/Scenes/MenuScene.unity`
-2. `Assets/Scenes/GameplayScene.unity`
+1. `IntroVideoScene.unity`
+2. `SplashScene.unity`
+3. `AuthScene.unity`
+4. `MenuScene.unity`
+5. `GameplayScene.unity`
 
-Si elles ne sont pas dans les Build Settings, les boutons `Jouer` et `Menu` afficheront une erreur de scene introuvable.
+Il les ajoute aussi aux Build Settings dans cet ordre.
 
-## 3. Scene MenuScene
+## 3. Configurer Supabase
 
-Creer ou verifier les objets suivants :
+Lire `unity/SUPABASE_SETUP.md`.
 
-- `EventSystem`
-- `Canvas`
-- `MenuRoot`
+Verifier dans :
 
-Sur `MenuRoot`, ajouter le script :
+`Assets/Scripts/Auth/SupabaseSettings.cs`
 
-- `MenuController`
+```csharp
+public const string ProjectUrl = "https://wcwufabumabolxhmpexc.supabase.co";
+public const string AnonKey = "sb_publishable_PwbgvZXpUn07HsvFRghnPg_R_9T5W3H";
+public const string PasswordResetRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/reset-password/";
+```
 
-Dans le `Canvas`, creer quatre boutons :
+Important :
 
-- `QuixoButton`
-- `QometButton`
-- `ThemeButton`
-- `QuitButton`
+- utiliser seulement la cle `anon public` / `publishable`;
+- ne jamais mettre de cle `service_role` dans Unity;
+- les mots de passe sont geres par Supabase Auth, pas par une table custom.
 
-Brancher les boutons dans l'Inspector :
+## 4. Lancer le jeu
 
-- `QuixoButton > On Click` : glisser `MenuRoot`, choisir `MenuController.StartQuixo`
-- `QometButton > On Click` : glisser `MenuRoot`, choisir `MenuController.StartQomet`
-- `MenuController.Theme Button` : glisser `ThemeButton` dans le champ
-- `QuitButton > On Click` : glisser `MenuRoot`, choisir `MenuController.Quit`
-
-UI conseillee :
-
-- titre : `Quixo / Qomet`
-- bouton theme : `Thème : MarineBlue`
-- boutons larges, texte lisible, couleurs sobres
-- `Canvas Scaler` : `Scale With Screen Size`, resolution `1920 x 1080`
-
-## 4. Scene GameplayScene
-
-Creer ou verifier les objets suivants :
-
-- `Main Camera`
-- `Directional Light`
-- `EventSystem`
-- `GameRoot`
-- `BoardView`
-- `BoardRoot`
-- `HUD`
-
-### Main Camera
-
-Parametres conseilles :
-
-- Position actuelle generee : `X 0`, `Y 7.2`, `Z -7.4`
-- Rotation actuelle generee : `X 48`, `Y 0`, `Z 0`
-- Orthographic Size : environ `4.9`
-- Tag : `MainCamera`
-- Ajouter `PhysicsRaycaster`
-
-Le `PhysicsRaycaster` est necessaire pour cliquer sur les cases 3D.
-
-### BoardView
-
-Sur `BoardView`, ajouter :
-
-- `BoardViewRenderer`
-
-Dans l'Inspector :
-
-- `Board Root` : glisser `BoardRoot`
-- `Cell Prefab` : optionnel
-
-Si `Cell Prefab` est vide, `BoardViewRenderer` genere des cases simples au lancement.
-Pour un prefab personnalise, il doit contenir :
-
-- un `MeshRenderer`
-- un `Collider`
-- un `BoardCellView`
-- un enfant `TextMeshPro` pour afficher `X/O`
-- un enfant `SelectionMarker` ou une `Image` de selection
-
-### HUD
-
-Sur `HUD`, ajouter :
-
-- `Canvas`
-- `Canvas Scaler`
-- `Graphic Raycaster`
-- `HudView`
-
-Regler le `Canvas Scaler` :
-
-- `UI Scale Mode` : `Scale With Screen Size`
-- `Reference Resolution` : `1920 x 1080`
-
-Creer les elements UI suivants dans `HUD` :
-
-- `TurnLabel` : `TextMeshProUGUI`
-- `InfoLabel` : `TextMeshProUGUI`
-- `RestartButton` : `Button`
-- `MenuButton` : `Button`
-- `UpButton` : `Button`
-- `DownButton` : `Button`
-- `LeftButton` : `Button`
-- `RightButton` : `Button`
-
-Dans `HudView`, glisser les references :
-
-- `Turn Label` -> `TurnLabel`
-- `Info Label` -> `InfoLabel`
-- `Restart Button` -> `RestartButton`
-- `Menu Button` -> `MenuButton`
-- `Up Button` -> `UpButton`
-- `Down Button` -> `DownButton`
-- `Left Button` -> `LeftButton`
-- `Right Button` -> `RightButton`
-
-Ne pas ajouter manuellement les callbacks des boutons HUD : `HudView.Bind` les branche au lancement.
-
-UI conseillee :
-
-- `TurnLabel` en haut a gauche
-- `InfoLabel` sous le joueur courant
-- directions en losange a droite ou sous le plateau
-- `RestartButton` et `MenuButton` en haut a droite
-- boutons de direction desactives par defaut
-
-### GameRoot
-
-Sur `GameRoot`, ajouter :
-
-- `GameFlowController`
-- optionnel : `VisualPolishController`
-
-Dans `GameFlowController`, glisser les references :
-
-- `Board View` -> objet `BoardView`
-- `Hud View` -> objet `HUD`
-
-Le script essaie de retrouver ces references automatiquement, mais les assigner dans l'Inspector reste plus clair.
-
-Dans `VisualPolishController`, si utilise :
-
-- `Main Camera` -> `Main Camera`
-- `Key Light` -> `Directional Light`
-- `UI Audio` -> un `AudioSource`, optionnel
-- `Click Clip` et `Win Clip` peuvent rester vides
-
-## 5. Tester avec Play
-
-1. Ouvrir `MenuScene`.
+1. Ouvrir `Assets/Scenes/IntroVideoScene`.
 2. Cliquer `Play`.
-3. Cliquer `Jouer Quixo`.
-4. Verifier :
-   - le plateau 5x5 apparait
-   - le HUD affiche `Joueur 1`
-   - seuls les cubes de bord libres ou au joueur actif sont selectionnables
-   - les boutons de direction s'activent apres selection
-   - `Restart` remet le plateau a zero
-   - `Menu` revient a `MenuScene`
-5. Refaire avec `Jouer Qomet`.
-6. Verifier :
-   - Joueur 1 en haut, Joueur 2 en bas
-   - clic sur une piece du joueur courant
-   - clic sur une case voisine vide
-   - changement de tour apres coup valide
+3. Verifier la video intro si le clip existe.
+4. Si le fichier video est absent, la scene passe automatiquement a `AuthScene` ou `MenuScene`.
+5. Tester `Continuer hors ligne` si besoin.
+6. Tester `Inscription`, `Connexion`, login par username et `Mot de passe oublie`.
+7. Dans `MenuScene`, tester :
+   - `Jouer Quixo`;
+   - `Jouer Qomet`;
+   - `Amis`;
+   - `Theme`;
+   - `Deconnexion`;
+   - `Quitter`.
 
-## 6. Changer les couleurs / theme
+## 5. Intro video
 
-Le theme peut etre change directement dans le jeu depuis `MenuScene` avec le bouton :
+Le Scene Builder cherche d'abord :
 
-`Thème : MarineBlue`
+`Assets/Videos/powered_by_mohamed_bouzekri.mp4`
 
-Il cycle dans cet ordre :
+Puis fallback si le fichier garde son double suffixe :
+
+`Assets/Videos/powered_by_mohamed_bouzekri.mp4.mp4`
+
+Skip possible :
+
+- espace;
+- entree;
+- clic souris.
+
+## 6. Themes visuels
+
+Le theme se change dans le jeu depuis `MenuScene` avec le bouton :
+
+`Theme : MarineBlue`
+
+Ordre du cycle :
 
 1. `MarineBlue`
 2. `EmeraldGreen`
@@ -202,54 +95,34 @@ Il cycle dans cet ordre :
 5. `PremiumDark`
 6. `CleanModern`
 
-Le choix est garde avec `PlayerPrefs` et s'applique au menu puis a `GameplayScene`.
+## 7. Build Windows
 
-La valeur par defaut de la scene generee se change aussi dans :
+1. Stop Play.
+2. `Assets > Refresh`.
+3. `Tools > Quixo > Create/Repair Scenes`.
+4. `File > Build Settings`.
+5. Verifier l'ordre :
+   - `Assets/Scenes/IntroVideoScene.unity`
+   - `Assets/Scenes/SplashScene.unity`
+   - `Assets/Scenes/AuthScene.unity`
+   - `Assets/Scenes/MenuScene.unity`
+   - `Assets/Scenes/GameplayScene.unity`
+6. Build `Windows x86_64`.
+7. Lancer le `.exe`.
 
-`Assets/Editor/QuixoSceneBuilder.cs`
+Verification attendue :
 
-Chercher :
+- pas de carre magenta;
+- video ou fallback OK;
+- AuthScene visible;
+- mode hors ligne utilisable;
+- inscription/connexion fonctionnent apres configuration;
+- login par username fonctionne apres migration SQL email;
+- reset password ouvre le flux email Supabase;
+- menu et amis ne crashent pas;
+- Quixo/Qomet local restent jouables.
 
-```csharp
-// ===============================
-// CHANGE THEME HERE
-// Options:
-// ClassicWood, PremiumDark, CleanModern, MarineBlue, EmeraldGreen, RoyalPurple
-// ===============================
-private const GameplayTheme ActiveGameplayTheme = GameplayTheme.MarineBlue;
-```
+## 8. Future V2 online
 
-Remplacer `GameplayTheme.MarineBlue` par une des options :
-
-- `GameplayTheme.ClassicWood`
-- `GameplayTheme.PremiumDark`
-- `GameplayTheme.CleanModern`
-- `GameplayTheme.MarineBlue`
-- `GameplayTheme.EmeraldGreen`
-- `GameplayTheme.RoyalPurple`
-
-Ensuite relancer `Tools > Quixo > Create/Repair Scenes` pour regenerer `MenuScene` et `GameplayScene` avec le theme choisi.
-
-## 7. Si une reference est Missing
-
-- Ouvrir la scene concernee.
-- Selectionner l'objet qui porte le script.
-- Dans l'Inspector, chercher les champs rouges ou vides.
-- Glisser le bon objet depuis la Hierarchy.
-- Sauvegarder la scene.
-- Relancer Play.
-
-References critiques :
-
-- `GameFlowController.Board View`
-- `GameFlowController.Hud View`
-- `BoardViewRenderer.Board Root`
-- tous les champs de `HudView`
-- `Main Camera` avec `PhysicsRaycaster`
-- scenes ajoutees dans `Build Settings`
-
-## 8. Role du Python
-
-Le code Python reste utile comme reference de regles et comme ancienne application PySide6.
-Pour une V1 Unity etudiante, l'option la plus stable est de garder la logique native C# dans Unity.
-Ne pas connecter Python a Unity pour cette V1 : cela ajouterait de la complexite de lancement, de packaging et de synchronisation sans gain important.
+La V1 prepare l'identite utilisateur et les amis.
+La V2 pourra ajouter invitations, matchmaking, synchronisation de partie, sauvegarde et validation serveur.
