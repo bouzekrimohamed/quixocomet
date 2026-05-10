@@ -368,6 +368,8 @@ namespace QuixoUnity.UI
         {
             turnPlayer1Color = palette.Player1;
             turnPlayer2Color = palette.Player2;
+            SetImageColor("StatusPanel", WithAlpha(palette.UiPanel, Mathf.Max(0.52f, palette.UiPanel.a * 0.86f)));
+            SetImageColor("DirectionsPanel", WithAlpha(palette.UiPanel, 0.34f));
 
             if (turnLabel != null)
             {
@@ -396,11 +398,11 @@ namespace QuixoUnity.UI
 
             var colors = button.colors;
             colors.normalColor = normalColor;
-            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.18f);
-            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
+            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.24f);
+            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.20f);
             colors.selectedColor = colors.highlightedColor;
             colors.disabledColor = disabledColor;
-            colors.fadeDuration = 0.12f;
+            colors.fadeDuration = 0.10f;
             button.colors = colors;
 
             if (button.targetGraphic != null)
@@ -418,6 +420,20 @@ namespace QuixoUnity.UI
             {
                 _directionBaseColors[button] = colors;
             }
+        }
+
+        private static void SetImageColor(string objectName, Color color)
+        {
+            var image = GameObject.Find(objectName)?.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = color;
+            }
+        }
+
+        private static Color WithAlpha(Color color, float alpha)
+        {
+            return new Color(color.r, color.g, color.b, alpha);
         }
 
         private T FindChildComponent<T>(string childName) where T : Component

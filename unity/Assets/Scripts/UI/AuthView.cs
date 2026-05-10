@@ -153,6 +153,13 @@ namespace QuixoUnity.UI
         private void ApplyTheme()
         {
             var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            SetImageColor("Background", palette.MenuBackground);
+            SetImageColor("AuthPanel", palette.MenuPanel);
+            SetTextColor("Title", palette.UiText);
+            SetTextColor("Subtitle", palette.UiMuted);
+            ApplyInput(emailInput, palette);
+            ApplyInput(passwordInput, palette);
+            ApplyInput(usernameInput, palette);
             ApplyButton(loginButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(registerButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(resetPasswordButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
@@ -217,15 +224,72 @@ namespace QuixoUnity.UI
 
             var colors = button.colors;
             colors.normalColor = normalColor;
-            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.18f);
-            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
+            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.24f);
+            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.20f);
+            colors.selectedColor = colors.highlightedColor;
             colors.disabledColor = disabledColor;
+            colors.fadeDuration = 0.10f;
             button.colors = colors;
+
+            if (button.targetGraphic != null)
+            {
+                button.targetGraphic.color = button.interactable ? normalColor : disabledColor;
+            }
 
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)
             {
                 label.color = textColor;
+            }
+        }
+
+        private static void ApplyInput(TMP_InputField input, GameplayPalette palette)
+        {
+            if (input == null)
+            {
+                return;
+            }
+
+            Color inputColor = Color.Lerp(palette.UiPanel, palette.CubeTop, 0.18f);
+            if (input.targetGraphic != null)
+            {
+                input.targetGraphic.color = inputColor;
+            }
+
+            var colors = input.colors;
+            colors.normalColor = inputColor;
+            colors.highlightedColor = Color.Lerp(inputColor, Color.white, 0.12f);
+            colors.selectedColor = Color.Lerp(inputColor, palette.Selection, 0.18f);
+            colors.disabledColor = new Color(inputColor.r, inputColor.g, inputColor.b, 0.48f);
+            colors.fadeDuration = 0.10f;
+            input.colors = colors;
+
+            if (input.textComponent != null)
+            {
+                input.textComponent.color = palette.UiText;
+            }
+
+            if (input.placeholder is TextMeshProUGUI placeholder)
+            {
+                placeholder.color = palette.UiMuted;
+            }
+        }
+
+        private static void SetImageColor(string objectName, Color color)
+        {
+            var image = GameObject.Find(objectName)?.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = color;
+            }
+        }
+
+        private static void SetTextColor(string objectName, Color color)
+        {
+            var label = GameObject.Find(objectName)?.GetComponent<TextMeshProUGUI>();
+            if (label != null)
+            {
+                label.color = color;
             }
         }
 

@@ -311,6 +311,10 @@ namespace QuixoUnity.UI
             }
 
             RenderSettings.ambientLight = palette.AmbientLight;
+            UpdateSceneMaterial("BoardFocusMat", Color.Lerp(palette.CameraBackground, palette.BoardTrim, 0.32f));
+            UpdateSceneMaterial("BoardSoftHalo", Color.Lerp(palette.CameraBackground, palette.Selection, 0.20f));
+            UpdateSceneMaterial("BoardGroundShadow", Color.Lerp(palette.CameraBackground, Color.black, 0.24f));
+
             var mainCamera = Camera.main;
             if (mainCamera != null)
             {
@@ -324,6 +328,29 @@ namespace QuixoUnity.UI
                 {
                     sceneLight.color = palette.KeyLight;
                 }
+            }
+        }
+
+        private void UpdateSceneMaterial(string objectName, Color color)
+        {
+            var target = transform.Find(objectName);
+            if (target == null)
+            {
+                return;
+            }
+
+            var renderer = target.GetComponent<Renderer>();
+            if (renderer != null)
+            {
+                var material = renderer.sharedMaterial;
+                if (material == null)
+                {
+                    material = CreateMaterial(color);
+                    renderer.sharedMaterial = material;
+                    return;
+                }
+
+                ApplyMaterialColor(material, color);
             }
         }
 
@@ -502,6 +529,20 @@ namespace QuixoUnity.UI
             var surface = CreatePrimitiveChild(boardRoot, "BoardSurface", generatedBoardColor);
             surface.transform.localPosition = new Vector3(0f, -0.005f, 0f);
             surface.transform.localScale = new Vector3(boardWidth - 0.18f, 0.045f, boardWidth - 0.18f);
+
+            float offset = (size - 1) * spacing * 0.5f;
+            var grooveColor = Color.Lerp(generatedBoardTrimColor, generatedBoardColor, 0.18f);
+            for (int i = 1; i < size; i++)
+            {
+                float position = -offset + (i - 0.5f) * spacing;
+                var vertical = CreatePrimitiveChild(boardRoot, $"GrooveVertical_{i}", grooveColor);
+                vertical.transform.localPosition = new Vector3(position, 0.032f, 0f);
+                vertical.transform.localScale = new Vector3(0.035f, 0.026f, boardWidth - 0.54f);
+
+                var horizontal = CreatePrimitiveChild(boardRoot, $"GrooveHorizontal_{i}", grooveColor);
+                horizontal.transform.localPosition = new Vector3(0f, 0.033f, -position);
+                horizontal.transform.localScale = new Vector3(boardWidth - 0.54f, 0.026f, 0.035f);
+            }
         }
 
         private GameObject CreatePrimitiveChild(Transform parent, string name, Color color)

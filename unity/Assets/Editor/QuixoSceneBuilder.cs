@@ -155,6 +155,7 @@ namespace QuixoUnity.EditorTools
 
             var canvas = CreateCanvas("Canvas");
             CreateFullScreenImage(canvas.transform, "Background", palette.MenuBackground);
+            CreatePremiumBackdrop(canvas.transform, palette, "Auth");
 
             var authRoot = new GameObject("AuthRoot");
             var authService = authRoot.AddComponent<AuthService>();
@@ -162,10 +163,11 @@ namespace QuixoUnity.EditorTools
 
             var panel = CreatePanel(canvas.transform, "AuthPanel", new Vector2(620f, 760f), palette.MenuPanel);
             SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(620f, 760f));
+            CreatePanelAccent(panel.transform, palette);
 
-            CreateText(panel.transform, "Title", "Quixo / Qomet", 44f, TextAlignmentOptions.Center, palette.UiText,
+            CreateText(panel.transform, "Title", "Quixo / Qomet", 46f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -60f), new Vector2(520f, 72f));
-            CreateText(panel.transform, "Subtitle", "Connexion joueur", 22f, TextAlignmentOptions.Center, palette.UiMuted,
+            CreateText(panel.transform, "Subtitle", "Connexion joueur", 21f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -118f), new Vector2(520f, 42f));
 
             var emailInput = CreateInput(panel.transform, "EmailInput", "Email ou username", false,
@@ -209,6 +211,7 @@ namespace QuixoUnity.EditorTools
 
             var canvas = CreateCanvas("Canvas");
             CreateFullScreenImage(canvas.transform, "Background", palette.MenuBackground);
+            CreatePremiumBackdrop(canvas.transform, palette, "Menu");
 
             var menuRoot = new GameObject("MenuRoot");
             var authService = menuRoot.AddComponent<AuthService>();
@@ -217,6 +220,7 @@ namespace QuixoUnity.EditorTools
 
             var panel = CreatePanel(canvas.transform, "MenuPanel", new Vector2(680f, 760f), palette.MenuPanel);
             SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(-340f, 0f), new Vector2(680f, 760f));
+            CreatePanelAccent(panel.transform, palette);
 
             CreateText(panel.transform, "Title", "Quixo / Qomet", 48f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -70f), new Vector2(560f, 76f));
@@ -288,6 +292,7 @@ namespace QuixoUnity.EditorTools
             var boardRoot = new GameObject("BoardRoot");
             boardRoot.transform.SetParent(boardViewObject.transform, false);
             boardRoot.transform.localPosition = Vector3.zero;
+            CreateGameplayStage(boardViewObject.transform, palette);
             ApplyBoardTheme(boardView, palette);
 
             var hudObject = CreateCanvas("HUD");
@@ -325,6 +330,7 @@ namespace QuixoUnity.EditorTools
         {
             var panel = CreatePanel(canvas, "FriendsPanel", new Vector2(720f, 760f), palette.MenuPanel);
             SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(390f, 0f), new Vector2(720f, 760f));
+            CreatePanelAccent(panel.transform, palette);
 
             CreateText(panel.transform, "FriendsTitle", "Amis", 38f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -54f), new Vector2(620f, 60f));
@@ -354,6 +360,83 @@ namespace QuixoUnity.EditorTools
             requests.name = "RequestsContainer";
             friends.name = "FriendsContainer";
             return panel;
+        }
+
+        private static void CreateGameplayStage(Transform parent, GameplayPalette palette)
+        {
+            var shadowColor = Color.Lerp(palette.CameraBackground, Color.black, 0.24f);
+            var focusColor = Color.Lerp(palette.CameraBackground, palette.Selection, 0.20f);
+            var trimColor = Color.Lerp(palette.BoardTrim, palette.CameraBackground, 0.20f);
+
+            CreateWorldCube(parent, "BoardFocusMat", new Vector3(0f, -0.22f, 0f), new Vector3(6.72f, 0.045f, 6.72f), trimColor);
+            CreateWorldCube(parent, "BoardSoftHalo", new Vector3(0f, -0.185f, 0f), new Vector3(6.24f, 0.032f, 6.24f), focusColor);
+            CreateWorldCube(parent, "BoardGroundShadow", new Vector3(0f, -0.245f, 0.08f), new Vector3(5.82f, 0.024f, 5.82f), shadowColor);
+        }
+
+        private static GameObject CreateWorldCube(Transform parent, string name, Vector3 localPosition, Vector3 localScale, Color color)
+        {
+            var cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cube.name = name;
+            cube.transform.SetParent(parent, false);
+            cube.transform.localPosition = localPosition;
+            cube.transform.localScale = localScale;
+
+            var collider = cube.GetComponent<Collider>();
+            if (collider != null)
+            {
+                collider.enabled = false;
+            }
+
+            var renderer = cube.GetComponent<MeshRenderer>();
+            if (renderer != null)
+            {
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = true;
+                var material = CreateWorldMaterial(color);
+                if (material != null)
+                {
+                    renderer.material = material;
+                }
+            }
+
+            return cube;
+        }
+
+        private static Material CreateWorldMaterial(Color color)
+        {
+            var shader = GetSafeBoardShader();
+            if (shader == null)
+            {
+                return null;
+            }
+
+            var material = new Material(shader)
+            {
+                name = "QuixoSceneGeneratedMaterial",
+            };
+
+            if (material.HasProperty("_BaseColor"))
+            {
+                material.SetColor("_BaseColor", color);
+            }
+
+            if (material.HasProperty("_Color"))
+            {
+                material.SetColor("_Color", color);
+            }
+
+            if (material.HasProperty("_Glossiness"))
+            {
+                material.SetFloat("_Glossiness", 0.12f);
+            }
+
+            if (material.HasProperty("_Smoothness"))
+            {
+                material.SetFloat("_Smoothness", 0.12f);
+            }
+
+            material.color = color;
+            return material;
         }
 
         private static Shader GetSafeBoardShader()
@@ -390,33 +473,34 @@ namespace QuixoUnity.EditorTools
         {
             CreateFullScreenImage(canvas, "HudBackground", new Color(0f, 0f, 0f, 0f));
 
-            var statusPanel = CreatePanel(canvas, "StatusPanel", new Vector2(760f, 76f), palette.UiPanel);
-            SetAnchored(statusPanel.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(32f, -28f), new Vector2(760f, 76f));
+            var statusPanel = CreatePanel(canvas, "StatusPanel", new Vector2(620f, 88f), WithAlpha(palette.UiPanel, Mathf.Max(0.52f, palette.UiPanel.a * 0.86f)));
+            SetAnchored(statusPanel.GetComponent<RectTransform>(), new Vector2(0f, 1f), new Vector2(32f, -26f), new Vector2(620f, 88f));
+            CreatePanelAccent(statusPanel.transform, palette);
 
-            var turnLabel = CreateText(statusPanel.transform, "TurnLabel", "Tour: Joueur 1 (X)", 28f, TextAlignmentOptions.Left, palette.UiText,
-                new Vector2(0f, 1f), new Vector2(24f, -10f), new Vector2(420f, 34f));
+            var turnLabel = CreateText(statusPanel.transform, "TurnLabel", "Tour: Joueur 1 (X)", 27f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(24f, -12f), new Vector2(420f, 34f));
             AddTextShadow(turnLabel);
 
             var infoLabel = CreateText(statusPanel.transform, "InfoLabel", "Choisissez un cube du bord libre ou a vous.", 19f, TextAlignmentOptions.Left, palette.UiMuted,
-                new Vector2(0f, 1f), new Vector2(24f, -44f), new Vector2(700f, 28f));
+                new Vector2(0f, 1f), new Vector2(24f, -50f), new Vector2(560f, 28f));
             AddTextShadow(infoLabel);
 
             var restartButton = CreateButton(canvas, "RestartButton", "Recommencer", palette.UiButtonSecondary,
-                new Vector2(1f, 1f), new Vector2(-184f, -32f), new Vector2(170f, 52f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(1f, 1f), new Vector2(-196f, -32f), new Vector2(182f, 54f), palette.UiText, palette.UiButtonDisabled);
             var menuButton = CreateButton(canvas, "MenuButton", "Menu", palette.UiButtonSecondary,
-                new Vector2(1f, 1f), new Vector2(-40f, -32f), new Vector2(112f, 52f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(1f, 1f), new Vector2(-42f, -32f), new Vector2(116f, 54f), palette.UiText, palette.UiButtonDisabled);
 
-            var directionsPanel = CreatePanel(canvas, "DirectionsPanel", new Vector2(348f, 236f), new Color(0f, 0f, 0f, 0f));
-            SetAnchored(directionsPanel.GetComponent<RectTransform>(), new Vector2(1f, 0f), new Vector2(-60f, 46f), new Vector2(348f, 236f));
+            var directionsPanel = CreatePanel(canvas, "DirectionsPanel", new Vector2(368f, 252f), WithAlpha(palette.UiPanel, 0.34f));
+            SetAnchored(directionsPanel.GetComponent<RectTransform>(), new Vector2(1f, 0f), new Vector2(-56f, 42f), new Vector2(368f, 252f));
 
             var upButton = CreateButton(directionsPanel.transform, "UpButton", "Haut", palette.UiButton,
-                new Vector2(0.5f, 0.5f), new Vector2(0f, 78f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, 82f), new Vector2(152f, 66f), palette.UiText, palette.UiButtonDisabled);
             var downButton = CreateButton(directionsPanel.transform, "DownButton", "Bas", palette.UiButton,
-                new Vector2(0.5f, 0.5f), new Vector2(0f, -78f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 0.5f), new Vector2(0f, -82f), new Vector2(152f, 66f), palette.UiText, palette.UiButtonDisabled);
             var leftButton = CreateButton(directionsPanel.transform, "LeftButton", "Gauche", palette.UiButton,
-                new Vector2(0.5f, 0.5f), new Vector2(-112f, 0f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 0.5f), new Vector2(-116f, 0f), new Vector2(152f, 66f), palette.UiText, palette.UiButtonDisabled);
             var rightButton = CreateButton(directionsPanel.transform, "RightButton", "Droite", palette.UiButton,
-                new Vector2(0.5f, 0.5f), new Vector2(112f, 0f), new Vector2(146f, 64f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 0.5f), new Vector2(116f, 0f), new Vector2(152f, 66f), palette.UiText, palette.UiButtonDisabled);
 
             upButton.interactable = false;
             downButton.interactable = false;
@@ -502,6 +586,76 @@ namespace QuixoUnity.EditorTools
             return imageObject;
         }
 
+        private static void CreatePremiumBackdrop(Transform parent, GameplayPalette palette, string prefix)
+        {
+            CreateStars(parent, palette);
+
+            CreateBackdropBand(parent, $"{prefix}SoftBandTop", WithAlpha(palette.Selection, 0.075f),
+                new Vector2(0.5f, 0.5f), new Vector2(-340f, 230f), new Vector2(1620f, 92f), 11f);
+            CreateBackdropBand(parent, $"{prefix}SoftBandBottom", WithAlpha(palette.Board, 0.11f),
+                new Vector2(0.5f, 0.5f), new Vector2(420f, -320f), new Vector2(1420f, 84f), -9f);
+
+            var x = CreateText(parent, $"{prefix}GhostX", "X", 240f, TextAlignmentOptions.Center, WithAlpha(palette.Player1, 0.08f),
+                new Vector2(0f, 0.5f), new Vector2(90f, 40f), new Vector2(240f, 260f));
+            x.fontStyle = FontStyles.Bold;
+
+            var o = CreateText(parent, $"{prefix}GhostO", "O", 220f, TextAlignmentOptions.Center, WithAlpha(palette.Player2, 0.075f),
+                new Vector2(1f, 0.5f), new Vector2(-108f, -62f), new Vector2(250f, 250f));
+            o.fontStyle = FontStyles.Bold;
+
+            for (int i = 0; i < 9; i++)
+            {
+                float xPos = -820f + i * 205f;
+                float yPos = -430f + Mathf.Abs(Mathf.Sin(i * 1.7f)) * 170f;
+                float size = 14f + (i % 3) * 6f;
+                CreateBackdropBand(parent, $"{prefix}Token_{i:00}", WithAlpha(palette.CubeTop, 0.12f),
+                    new Vector2(0.5f, 0.5f), new Vector2(xPos, yPos), new Vector2(size, size), i * 13f);
+            }
+        }
+
+        private static void CreateBackdropBand(
+            Transform parent,
+            string name,
+            Color color,
+            Vector2 anchor,
+            Vector2 anchoredPosition,
+            Vector2 size,
+            float rotation)
+        {
+            var band = new GameObject(name);
+            band.transform.SetParent(parent, false);
+
+            var image = band.AddComponent<Image>();
+            image.color = color;
+            image.raycastTarget = false;
+
+            var rect = band.GetComponent<RectTransform>();
+            SetAnchored(rect, anchor, anchoredPosition, size);
+            rect.localRotation = Quaternion.Euler(0f, 0f, rotation);
+        }
+
+        private static void CreatePanelAccent(Transform parent, GameplayPalette palette)
+        {
+            var accent = new GameObject("AccentLine");
+            accent.transform.SetParent(parent, false);
+
+            var image = accent.AddComponent<Image>();
+            image.color = WithAlpha(palette.Selection, 0.72f);
+            image.raycastTarget = false;
+
+            var rect = accent.GetComponent<RectTransform>();
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.offsetMin = new Vector2(34f, -12f);
+            rect.offsetMax = new Vector2(-34f, -8f);
+        }
+
+        private static Color WithAlpha(Color color, float alpha)
+        {
+            return new Color(color.r, color.g, color.b, alpha);
+        }
+
         private static GameObject CreatePanel(Transform parent, string name, Vector2 size, Color color)
         {
             var panel = new GameObject(name);
@@ -510,6 +664,17 @@ namespace QuixoUnity.EditorTools
             var image = panel.AddComponent<Image>();
             image.color = color;
             image.raycastTarget = false;
+
+            if (color.a > 0.03f)
+            {
+                var shadow = panel.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0f, 0f, 0f, 0.28f);
+                shadow.effectDistance = new Vector2(0f, -4f);
+
+                var outline = panel.AddComponent<Outline>();
+                outline.effectColor = WithAlpha(Color.Lerp(color, Color.white, 0.24f), 0.28f);
+                outline.effectDistance = new Vector2(1f, 1f);
+            }
 
             var rect = panel.GetComponent<RectTransform>();
             rect.sizeDelta = size;
@@ -531,6 +696,12 @@ namespace QuixoUnity.EditorTools
 
             var image = inputObject.AddComponent<Image>();
             image.color = Color.Lerp(palette.UiPanel, palette.CubeTop, 0.18f);
+            var shadow = inputObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.16f);
+            shadow.effectDistance = new Vector2(0f, -2f);
+            var outline = inputObject.AddComponent<Outline>();
+            outline.effectColor = WithAlpha(Color.Lerp(palette.UiText, palette.UiPanel, 0.62f), 0.28f);
+            outline.effectDistance = new Vector2(1f, 1f);
 
             var input = inputObject.AddComponent<TMP_InputField>();
             input.targetGraphic = image;
@@ -538,6 +709,13 @@ namespace QuixoUnity.EditorTools
             input.lineType = TMP_InputField.LineType.SingleLine;
             input.caretColor = palette.UiText;
             input.selectionColor = new Color(palette.Selection.r, palette.Selection.g, palette.Selection.b, 0.35f);
+            var colors = input.colors;
+            colors.normalColor = image.color;
+            colors.highlightedColor = Color.Lerp(image.color, Color.white, 0.12f);
+            colors.selectedColor = Color.Lerp(image.color, palette.Selection, 0.18f);
+            colors.disabledColor = WithAlpha(image.color, 0.48f);
+            colors.fadeDuration = 0.10f;
+            input.colors = colors;
 
             SetAnchored(inputObject.GetComponent<RectTransform>(), anchor, anchoredPosition, size);
 
@@ -640,10 +818,10 @@ namespace QuixoUnity.EditorTools
             var image = buttonObject.AddComponent<Image>();
             image.color = normalColor;
             var shadow = buttonObject.AddComponent<Shadow>();
-            shadow.effectColor = new Color(0f, 0f, 0f, 0.22f);
-            shadow.effectDistance = new Vector2(2f, -2f);
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.26f);
+            shadow.effectDistance = new Vector2(0f, -3f);
             var outline = buttonObject.AddComponent<Outline>();
-            outline.effectColor = Color.Lerp(normalColor, Color.white, 0.16f);
+            outline.effectColor = WithAlpha(Color.Lerp(normalColor, Color.white, 0.26f), 0.38f);
             outline.effectDistance = new Vector2(1f, 1f);
 
             var button = buttonObject.AddComponent<Button>();
@@ -651,11 +829,11 @@ namespace QuixoUnity.EditorTools
 
             var colors = button.colors;
             colors.normalColor = normalColor;
-            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.18f);
-            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
+            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.24f);
+            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.20f);
             colors.selectedColor = colors.highlightedColor;
             colors.disabledColor = disabledColor ?? new Color(0.28f, 0.26f, 0.22f, 0.45f);
-            colors.fadeDuration = 0.12f;
+            colors.fadeDuration = 0.10f;
             button.colors = colors;
 
             SetAnchored(buttonObject.GetComponent<RectTransform>(), anchor, anchoredPosition, size);

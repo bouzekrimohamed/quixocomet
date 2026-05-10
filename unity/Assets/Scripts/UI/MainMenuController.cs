@@ -194,6 +194,7 @@ namespace QuixoUnity.UI
             var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
             SetImageColor("Background", palette.MenuBackground);
             SetImageColor("MenuPanel", palette.MenuPanel);
+            SetImageColor("FriendsPanel", palette.MenuPanel);
             SetTextColor("Title", palette.UiText);
             SetTextColor("Subtitle", palette.UiMuted);
             if (connectedLabel != null)
@@ -274,9 +275,11 @@ namespace QuixoUnity.UI
 
             var colors = button.colors;
             colors.normalColor = normalColor;
-            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.18f);
-            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
+            colors.highlightedColor = Color.Lerp(normalColor, Color.white, 0.24f);
+            colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.20f);
+            colors.selectedColor = colors.highlightedColor;
             colors.disabledColor = disabledColor;
+            colors.fadeDuration = 0.10f;
             button.colors = colors;
 
             if (button.targetGraphic != null)
