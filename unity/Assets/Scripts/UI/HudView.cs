@@ -25,6 +25,7 @@ namespace QuixoUnity.UI
         [SerializeField] private float directionScaleOnEnable = 1.08f;
         [SerializeField] private Color turnPlayer1Color = new(0.04f, 0.14f, 0.34f);
         [SerializeField] private Color turnPlayer2Color = new(0.62f, 0.18f, 0.09f);
+        [SerializeField] private GameKind gameKind = GameKind.Quixo;
 
         private GameFlowController _controller = null!;
         private CanvasGroup _infoCanvasGroup = null!;
@@ -98,6 +99,13 @@ namespace QuixoUnity.UI
             BindButton(rightButton, PlayRight);
         }
 
+        public void SetGameKind(GameKind kind)
+        {
+            gameKind = kind;
+            ApplyActiveTheme();
+            SetDirectionControlsVisible(gameKind != GameKind.Qomet);
+        }
+
         public void SetTurn(PlayerMark player)
         {
             if (turnLabel == null)
@@ -105,7 +113,9 @@ namespace QuixoUnity.UI
                 return;
             }
 
-            turnLabel.text = $"Tour: {(player == PlayerMark.Player1 ? "Joueur 1 (X)" : "Joueur 2 (O)")}";
+            turnLabel.text = gameKind == GameKind.Qomet
+                ? $"Tour: {(player == PlayerMark.Player1 ? "Joueur 1 jaune" : "Joueur 2 rouge")}"
+                : $"Tour: {(player == PlayerMark.Player1 ? "Joueur 1 (X)" : "Joueur 2 (O)")}";
             turnLabel.color = player == PlayerMark.Player1 ? turnPlayer1Color : turnPlayer2Color;
 
             if (_turnPulseRoutine != null)
@@ -144,6 +154,14 @@ namespace QuixoUnity.UI
             }
 
             _infoRoutine = StartCoroutine(FadeInfoLabel());
+        }
+
+        public void SetRestartEnabled(bool enabled)
+        {
+            if (restartButton != null)
+            {
+                restartButton.interactable = enabled;
+            }
         }
 
         public void SetDirections(IReadOnlyList<MoveDirection> allowed)
@@ -368,6 +386,12 @@ namespace QuixoUnity.UI
         {
             turnPlayer1Color = palette.Player1;
             turnPlayer2Color = palette.Player2;
+            if (gameKind == GameKind.Qomet)
+            {
+                turnPlayer1Color = new Color(1.000f, 0.700f, 0.155f, 1f);
+                turnPlayer2Color = new Color(0.720f, 0.115f, 0.155f, 1f);
+            }
+
             SetImageColor("StatusPanel", WithAlpha(palette.UiPanel, Mathf.Max(0.52f, palette.UiPanel.a * 0.86f)));
             SetImageColor("DirectionsPanel", WithAlpha(palette.UiPanel, 0.34f));
 
@@ -387,6 +411,7 @@ namespace QuixoUnity.UI
             ApplyButtonTheme(downButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButtonTheme(leftButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButtonTheme(rightButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            SetDirectionControlsVisible(gameKind != GameKind.Qomet);
         }
 
         private void ApplyButtonTheme(Button button, Color normalColor, Color textColor, Color disabledColor)
@@ -434,6 +459,29 @@ namespace QuixoUnity.UI
         private static Color WithAlpha(Color color, float alpha)
         {
             return new Color(color.r, color.g, color.b, alpha);
+        }
+
+        private void SetDirectionControlsVisible(bool visible)
+        {
+            Transform panel = upButton != null ? upButton.transform.parent : null;
+            if (panel != null && panel.name == "DirectionsPanel")
+            {
+                panel.gameObject.SetActive(visible);
+                return;
+            }
+
+            SetButtonObjectVisible(upButton, visible);
+            SetButtonObjectVisible(downButton, visible);
+            SetButtonObjectVisible(leftButton, visible);
+            SetButtonObjectVisible(rightButton, visible);
+        }
+
+        private static void SetButtonObjectVisible(Button button, bool visible)
+        {
+            if (button != null)
+            {
+                button.gameObject.SetActive(visible);
+            }
         }
 
         private T FindChildComponent<T>(string childName) where T : Component

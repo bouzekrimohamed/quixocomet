@@ -18,6 +18,12 @@ namespace QuixoUnity.Auth
     }
 
     [Serializable]
+    public sealed class RefreshTokenRequest
+    {
+        public string refresh_token;
+    }
+
+    [Serializable]
     public sealed class SupabaseUser
     {
         public string id;
@@ -34,6 +40,18 @@ namespace QuixoUnity.Auth
         public string error;
         public string error_description;
         public string msg;
+    }
+
+    [Serializable]
+    public sealed class SupabaseErrorResponse
+    {
+        public string code;
+        public string message;
+        public string msg;
+        public string error;
+        public string error_description;
+        public string details;
+        public string hint;
     }
 
     [Serializable]

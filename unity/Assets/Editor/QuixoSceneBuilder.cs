@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using QuixoUnity.Auth;
 using QuixoUnity.Gameplay;
+using QuixoUnity.Online;
 using QuixoUnity.Social;
 using QuixoUnity.UI;
 using TMPro;
@@ -161,41 +162,88 @@ namespace QuixoUnity.EditorTools
             var authService = authRoot.AddComponent<AuthService>();
             var authView = authRoot.AddComponent<AuthView>();
 
-            var panel = CreatePanel(canvas.transform, "AuthPanel", new Vector2(620f, 760f), palette.MenuPanel);
-            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(620f, 760f));
+            var authPanelColor = WithAlpha(new Color(0.025f, 0.045f, 0.082f, 1f), 0.84f);
+            var panel = CreatePanel(canvas.transform, "AuthPanel", new Vector2(760f, 790f), authPanelColor);
+            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 790f));
             CreatePanelAccent(panel.transform, palette);
 
-            CreateText(panel.transform, "Title", "Quixo / Qomet", 46f, TextAlignmentOptions.Center, palette.UiText,
-                new Vector2(0.5f, 1f), new Vector2(0f, -60f), new Vector2(520f, 72f));
-            CreateText(panel.transform, "Subtitle", "Connexion joueur", 21f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -118f), new Vector2(520f, 42f));
+            CreateText(panel.transform, "Title", "Quixo / Qomet", 48f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -54f), new Vector2(610f, 72f));
+            CreateText(panel.transform, "Subtitle", "Espace joueur", 21f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -112f), new Vector2(610f, 42f));
 
-            var emailInput = CreateInput(panel.transform, "EmailInput", "Email ou username", false,
-                new Vector2(0.5f, 1f), new Vector2(0f, -196f), new Vector2(430f, 58f), palette);
-            var passwordInput = CreateInput(panel.transform, "PasswordInput", "Mot de passe", true,
-                new Vector2(0.5f, 1f), new Vector2(0f, -276f), new Vector2(430f, 58f), palette);
-            var usernameInput = CreateInput(panel.transform, "UsernameInput", "Username pour inscription", false,
-                new Vector2(0.5f, 1f), new Vector2(0f, -356f), new Vector2(430f, 58f), palette);
+            var showSignInButton = CreateButton(panel.transform, "ShowSignInButton", "Sign In", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(-190f, -174f), new Vector2(170f, 48f), palette.UiText, palette.UiButtonDisabled);
+            var showSignUpButton = CreateButton(panel.transform, "ShowSignUpButton", "Sign Up", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -174f), new Vector2(170f, 48f), palette.UiText, palette.UiButtonDisabled);
+            var showGuestButton = CreateButton(panel.transform, "ShowGuestButton", "Guest", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(190f, -174f), new Vector2(170f, 48f), palette.UiText, palette.UiButtonDisabled);
 
-            var loginButton = CreateButton(panel.transform, "LoginButton", "Connexion", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(-112f, -440f), new Vector2(206f, 58f), palette.UiText, palette.UiButtonDisabled);
-            var registerButton = CreateButton(panel.transform, "RegisterButton", "Inscription", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(112f, -440f), new Vector2(206f, 58f), palette.UiText, palette.UiButtonDisabled);
-            var resetPasswordButton = CreateButton(panel.transform, "ResetPasswordButton", "Mot de passe oublie", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -510f), new Vector2(430f, 50f), palette.UiText, palette.UiButtonDisabled);
-            var offlineButton = CreateButton(panel.transform, "OfflineButton", "Continuer hors ligne", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -580f), new Vector2(430f, 54f), palette.UiText, palette.UiButtonDisabled);
+            var signInPanel = CreateAuthModePanel(panel.transform, "SignInPanel", new Vector2(560f, 390f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -250f));
+            CreateText(signInPanel.transform, "SignInTitle", "Connexion", 30f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(0f, -4f), new Vector2(520f, 48f));
+            var signInCredentialInput = CreateInput(signInPanel.transform, "SignInCredentialInput", "Email ou username", false,
+                new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(500f, 58f), palette);
+            var signInPasswordInput = CreateInput(signInPanel.transform, "SignInPasswordInput", "Mot de passe", true,
+                new Vector2(0.5f, 1f), new Vector2(0f, -158f), new Vector2(500f, 58f), palette);
+            var loginButton = CreateButton(signInPanel.transform, "LoginButton", "Connexion", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -244f), new Vector2(500f, 58f), palette.UiText, palette.UiButtonDisabled);
+            var resetPasswordButton = CreateButton(signInPanel.transform, "ResetPasswordButton", "Mot de passe oublie", WithAlpha(palette.UiButtonSecondary, 0.70f),
+                new Vector2(0.5f, 1f), new Vector2(-128f, -318f), new Vector2(244f, 48f), palette.UiText, palette.UiButtonDisabled);
+            var createAccountButton = CreateButton(signInPanel.transform, "CreateAccountButton", "Creer un compte", WithAlpha(palette.UiButtonSecondary, 0.70f),
+                new Vector2(0.5f, 1f), new Vector2(128f, -318f), new Vector2(244f, 48f), palette.UiText, palette.UiButtonDisabled);
+
+            var signUpPanel = CreateAuthModePanel(panel.transform, "SignUpPanel", new Vector2(560f, 420f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -250f));
+            CreateText(signUpPanel.transform, "SignUpTitle", "Inscription", 30f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(0f, -4f), new Vector2(520f, 48f));
+            var signUpEmailInput = CreateInput(signUpPanel.transform, "SignUpEmailInput", "Email", false,
+                new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(500f, 58f), palette);
+            var signUpUsernameInput = CreateInput(signUpPanel.transform, "SignUpUsernameInput", "Username", false,
+                new Vector2(0.5f, 1f), new Vector2(0f, -158f), new Vector2(500f, 58f), palette);
+            var signUpPasswordInput = CreateInput(signUpPanel.transform, "SignUpPasswordInput", "Mot de passe", true,
+                new Vector2(0.5f, 1f), new Vector2(0f, -234f), new Vector2(500f, 58f), palette);
+            var registerButton = CreateButton(signUpPanel.transform, "RegisterButton", "Inscription", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -320f), new Vector2(500f, 58f), palette.UiText, palette.UiButtonDisabled);
+            var alreadyAccountButton = CreateButton(signUpPanel.transform, "AlreadyAccountButton", "Deja un compte ? Connexion", WithAlpha(palette.UiButtonSecondary, 0.70f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -388f), new Vector2(500f, 48f), palette.UiText, palette.UiButtonDisabled);
+
+            var guestPanel = CreateAuthModePanel(panel.transform, "GuestPanel", new Vector2(560f, 300f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -292f));
+            var guestCard = CreatePanel(guestPanel.transform, "GuestCard", new Vector2(500f, 210f), WithAlpha(palette.UiPanel, 0.52f));
+            SetAnchored(guestCard.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(500f, 210f));
+            CreateText(guestCard.transform, "GuestTitle", "Jouer hors ligne sans compte", 25f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -34f), new Vector2(430f, 42f));
+            CreateText(guestCard.transform, "GuestSubtitle", "Parties locales, sans synchronisation de profil.", 17f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -84f), new Vector2(430f, 34f));
+            var offlineButton = CreateButton(guestCard.transform, "OfflineButton", "Continuer hors ligne", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(360f, 54f), palette.UiText, palette.UiButtonDisabled);
+
             var message = CreateText(panel.transform, "MessageLabel", "Configurez Supabase ou continuez hors ligne.", 18f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -660f), new Vector2(500f, 54f));
+                new Vector2(0.5f, 1f), new Vector2(0f, -726f), new Vector2(620f, 50f));
 
             AssignObject(authView, "authService", authService);
-            AssignObject(authView, "emailInput", emailInput);
-            AssignObject(authView, "passwordInput", passwordInput);
-            AssignObject(authView, "usernameInput", usernameInput);
+            AssignObject(authView, "emailInput", signInCredentialInput);
+            AssignObject(authView, "passwordInput", signInPasswordInput);
+            AssignObject(authView, "usernameInput", signUpUsernameInput);
+            AssignObject(authView, "signInCredentialInput", signInCredentialInput);
+            AssignObject(authView, "signInPasswordInput", signInPasswordInput);
+            AssignObject(authView, "signUpEmailInput", signUpEmailInput);
+            AssignObject(authView, "signUpUsernameInput", signUpUsernameInput);
+            AssignObject(authView, "signUpPasswordInput", signUpPasswordInput);
             AssignObject(authView, "loginButton", loginButton);
             AssignObject(authView, "registerButton", registerButton);
             AssignObject(authView, "resetPasswordButton", resetPasswordButton);
             AssignObject(authView, "offlineButton", offlineButton);
+            AssignObject(authView, "showSignInButton", showSignInButton);
+            AssignObject(authView, "showSignUpButton", showSignUpButton);
+            AssignObject(authView, "showGuestButton", showGuestButton);
+            AssignObject(authView, "createAccountButton", createAccountButton);
+            AssignObject(authView, "alreadyAccountButton", alreadyAccountButton);
+            AssignObject(authView, "signInPanel", signInPanel);
+            AssignObject(authView, "signUpPanel", signUpPanel);
+            AssignObject(authView, "guestPanel", guestPanel);
             AssignObject(authView, "messageLabel", message);
 
             EditorSceneManager.SaveScene(scene, AuthScenePath);
@@ -216,46 +264,69 @@ namespace QuixoUnity.EditorTools
             var menuRoot = new GameObject("MenuRoot");
             var authService = menuRoot.AddComponent<AuthService>();
             var friendService = menuRoot.AddComponent<FriendService>();
+            var onlineMatchService = menuRoot.AddComponent<OnlineMatchService>();
+            var onlinePresenceService = menuRoot.AddComponent<OnlinePresenceService>();
             var menuController = menuRoot.AddComponent<MainMenuController>();
 
-            var panel = CreatePanel(canvas.transform, "MenuPanel", new Vector2(680f, 760f), palette.MenuPanel);
-            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(-340f, 0f), new Vector2(680f, 760f));
+            var panel = CreatePanel(canvas.transform, "MenuPanel", new Vector2(680f, 820f), palette.MenuPanel);
+            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(-340f, 0f), new Vector2(680f, 820f));
             CreatePanelAccent(panel.transform, palette);
 
             CreateText(panel.transform, "Title", "Quixo / Qomet", 48f, TextAlignmentOptions.Center, palette.UiText,
-                new Vector2(0.5f, 1f), new Vector2(0f, -70f), new Vector2(560f, 76f));
-            CreateText(panel.transform, "Subtitle", "Jeu de strategie local", 23f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -132f), new Vector2(560f, 44f));
+                new Vector2(0.5f, 1f), new Vector2(0f, -58f), new Vector2(560f, 68f));
+            CreateText(panel.transform, "Subtitle", "Jeu de strategie local et online", 22f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -116f), new Vector2(560f, 40f));
             var connected = CreateText(panel.transform, "ConnectedLabel", "Connecte : Invite", 19f, TextAlignmentOptions.Center, palette.UiText,
-                new Vector2(0.5f, 1f), new Vector2(0f, -180f), new Vector2(560f, 34f));
+                new Vector2(0.5f, 1f), new Vector2(0f, -160f), new Vector2(560f, 32f));
 
-            var quixoButton = CreateButton(panel.transform, "QuixoButton", "Jouer Quixo", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -254f), new Vector2(420f, 64f), palette.UiText, palette.UiButtonDisabled);
-            var qometButton = CreateButton(panel.transform, "QometButton", "Jouer Qomet", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -332f), new Vector2(420f, 64f), palette.UiText, palette.UiButtonDisabled);
+            var quixoButton = CreateButton(panel.transform, "QuixoButton", "Jouer Quixo local", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -226f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var qometButton = CreateButton(panel.transform, "QometButton", "Jouer Qomet local", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -292f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var quixoOnlineButton = CreateButton(panel.transform, "QuixoOnlineButton", "Jouer Quixo en ligne", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -358f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var qometOnlineButton = CreateButton(panel.transform, "QometOnlineButton", "Jouer Qomet en ligne", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -424f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var cancelOnlineButton = CreateButton(panel.transform, "CancelOnlineButton", "Annuler recherche", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -490f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+            cancelOnlineButton.gameObject.SetActive(false);
             var friendsButton = CreateButton(panel.transform, "FriendsButton", "Amis", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -410f), new Vector2(420f, 60f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(0f, -490f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
             var themeButton = CreateButton(panel.transform, "ThemeButton", $"Theme : {VisualThemeCatalog.DisplayName(ActiveGameplayTheme)}", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -484f), new Vector2(420f, 60f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(0f, -552f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
             var logoutButton = CreateButton(panel.transform, "LogoutButton", "Deconnexion", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -558f), new Vector2(420f, 58f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(0f, -614f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
             var quitButton = CreateButton(panel.transform, "QuitButton", "Quitter", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -630f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(0f, -676f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
             var status = CreateText(panel.transform, "MenuStatusLabel", "", 17f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -704f), new Vector2(560f, 34f));
+                new Vector2(0.5f, 1f), new Vector2(0f, -750f), new Vector2(560f, 44f));
+
+            // Renfort visuel : quelques X et O flottants qui s'ajoutent aux Token deja crees
+            // par CreatePremiumBackdrop. Le MenuVisualAnimator les fera deriver doucement.
+            CreateMenuFloatingMarks(canvas.transform, palette);
 
             var friendsPanel = BuildFriendsPanel(canvas.transform, palette);
             var friendsView = friendsPanel.AddComponent<FriendsView>();
             friendsPanel.SetActive(false);
 
+            // Animator du menu : drift des particules, pulse du titre, fade-in du panneau,
+            // pulsation legere des boutons online. Attache au Canvas pour qu'il voie tous
+            // les enfants du fond ET le MenuPanel.
+            canvas.AddComponent<MenuVisualAnimator>();
+
             EditorSceneManager.SaveScene(scene, MenuScenePath);
 
             AssignObject(menuController, "authService", authService);
             AssignObject(menuController, "friendService", friendService);
+            AssignObject(menuController, "onlineMatchService", onlineMatchService);
+            AssignObject(menuController, "onlinePresenceService", onlinePresenceService);
             AssignObject(menuController, "connectedLabel", connected);
             AssignObject(menuController, "statusLabel", status);
             AssignObject(menuController, "quixoButton", quixoButton);
             AssignObject(menuController, "qometButton", qometButton);
+            AssignObject(menuController, "quixoOnlineButton", quixoOnlineButton);
+            AssignObject(menuController, "qometOnlineButton", qometOnlineButton);
+            AssignObject(menuController, "cancelOnlineButton", cancelOnlineButton);
             AssignObject(menuController, "friendsButton", friendsButton);
             AssignObject(menuController, "themeButton", themeButton);
             AssignObject(menuController, "logoutButton", logoutButton);
@@ -263,12 +334,15 @@ namespace QuixoUnity.EditorTools
             AssignObject(menuController, "friendsPanel", friendsPanel);
             AssignObject(menuController, "friendsView", friendsView);
             AssignObject(friendsView, "friendService", friendService);
+            AssignObject(friendsView, "onlineMatchService", onlineMatchService);
+            AssignObject(friendsView, "onlinePresenceService", onlinePresenceService);
             AssignObject(friendsView, "usernameInput", FindComponentInChildren<TMP_InputField>(friendsPanel.transform, "FriendUsernameInput"));
             AssignObject(friendsView, "addButton", FindComponentInChildren<Button>(friendsPanel.transform, "AddFriendButton"));
             AssignObject(friendsView, "refreshButton", FindComponentInChildren<Button>(friendsPanel.transform, "RefreshFriendsButton"));
             AssignObject(friendsView, "closeButton", FindComponentInChildren<Button>(friendsPanel.transform, "CloseFriendsButton"));
             AssignObject(friendsView, "statusLabel", FindComponentInChildren<TextMeshProUGUI>(friendsPanel.transform, "FriendsStatusLabel"));
             AssignObject(friendsView, "requestsContainer", FindComponentInChildren<RectTransform>(friendsPanel.transform, "RequestsContainer"));
+            AssignObject(friendsView, "invitesContainer", FindComponentInChildren<RectTransform>(friendsPanel.transform, "InvitesContainer"));
             AssignObject(friendsView, "friendsContainer", FindComponentInChildren<RectTransform>(friendsPanel.transform, "FriendsContainer"));
 
             EditorSceneManager.SaveScene(scene, MenuScenePath);
@@ -303,9 +377,13 @@ namespace QuixoUnity.EditorTools
 
             var gameRoot = new GameObject("GameRoot");
             var gameFlow = gameRoot.AddComponent<GameFlowController>();
+            var onlineMatchService = gameRoot.AddComponent<OnlineMatchService>();
+            var onlinePresenceService = gameRoot.AddComponent<OnlinePresenceService>();
 
             AssignObject(gameFlow, "boardView", boardView);
             AssignObject(gameFlow, "hudView", hudView);
+            AssignObject(gameFlow, "onlineMatchService", onlineMatchService);
+            AssignObject(gameFlow, "onlinePresenceService", onlinePresenceService);
             AssignObject(boardView, "boardRoot", boardRoot.transform);
 
             Selection.activeGameObject = camera.gameObject;
@@ -326,39 +404,63 @@ namespace QuixoUnity.EditorTools
             AssignObject(boardView, "generatedMaterialShader", GetSafeBoardShader());
         }
 
+        private static CanvasGroup CreateAuthModePanel(Transform parent, string name, Vector2 size, Vector2 anchor, Vector2 anchoredPosition)
+        {
+            var panel = new GameObject(name, typeof(RectTransform), typeof(CanvasGroup));
+            panel.transform.SetParent(parent, false);
+
+            var rect = panel.GetComponent<RectTransform>();
+            SetAnchored(rect, anchor, anchoredPosition, size);
+
+            var canvasGroup = panel.GetComponent<CanvasGroup>();
+            canvasGroup.alpha = 1f;
+            canvasGroup.interactable = true;
+            canvasGroup.blocksRaycasts = true;
+            return canvasGroup;
+        }
+
         private static GameObject BuildFriendsPanel(Transform canvas, GameplayPalette palette)
         {
-            var panel = CreatePanel(canvas, "FriendsPanel", new Vector2(720f, 760f), palette.MenuPanel);
-            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(390f, 0f), new Vector2(720f, 760f));
+            const float panelWidth = 760f;
+            const float panelHeight = 940f;
+            const float listWidth = panelWidth - 80f;
+
+            var panel = CreatePanel(canvas, "FriendsPanel", new Vector2(panelWidth, panelHeight), palette.MenuPanel);
+            SetAnchored(panel.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), new Vector2(400f, 0f), new Vector2(panelWidth, panelHeight));
             CreatePanelAccent(panel.transform, palette);
 
-            CreateText(panel.transform, "FriendsTitle", "Amis", 38f, TextAlignmentOptions.Center, palette.UiText,
-                new Vector2(0.5f, 1f), new Vector2(0f, -54f), new Vector2(620f, 60f));
-            CreateText(panel.transform, "FriendsSubtitle", "Preparation pour les parties en ligne V2", 18f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -104f), new Vector2(620f, 34f));
+            CreateText(panel.transform, "FriendsTitle", "Amis et invitations", 32f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(680f, 44f));
+            CreateText(panel.transform, "FriendsSubtitle", "Ajoutez un ami par username et voyez les invitations recues.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -92f), new Vector2(680f, 22f));
 
             CreateInput(panel.transform, "FriendUsernameInput", "username ami", false,
-                new Vector2(0.5f, 1f), new Vector2(-102f, -170f), new Vector2(360f, 54f), palette);
+                new Vector2(0.5f, 1f), new Vector2(-118f, -140f), new Vector2(380f, 52f), palette);
             CreateButton(panel.transform, "AddFriendButton", "Ajouter", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(206f, -170f), new Vector2(170f, 54f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(210f, -140f), new Vector2(170f, 52f), palette.UiText, palette.UiButtonDisabled);
             CreateButton(panel.transform, "RefreshFriendsButton", "Rafraichir", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(-102f, -236f), new Vector2(226f, 48f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(-128f, -204f), new Vector2(220f, 44f), palette.UiText, palette.UiButtonDisabled);
             CreateButton(panel.transform, "CloseFriendsButton", "Fermer", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(164f, -236f), new Vector2(226f, 48f), palette.UiText, palette.UiButtonDisabled);
+                new Vector2(0.5f, 1f), new Vector2(128f, -204f), new Vector2(220f, 44f), palette.UiText, palette.UiButtonDisabled);
 
-            CreateText(panel.transform, "RequestsTitle", "Demandes recues", 20f, TextAlignmentOptions.Left, palette.UiText,
-                new Vector2(0f, 1f), new Vector2(52f, -306f), new Vector2(300f, 34f));
-            var requests = CreateListContainer(panel.transform, "RequestsContainer", new Vector2(0f, 1f), new Vector2(52f, -352f), new Vector2(616f, 140f));
+            CreateText(panel.transform, "RequestsTitle", "Demandes d'amis recues", 19f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(40f, -260f), new Vector2(420f, 26f));
+            CreateScrollableListContainer(panel.transform, "RequestsContainer", palette,
+                new Vector2(0f, 1f), new Vector2(40f, -294f), new Vector2(listWidth, 180f));
 
-            CreateText(panel.transform, "AcceptedTitle", "Amis acceptes", 20f, TextAlignmentOptions.Left, palette.UiText,
-                new Vector2(0f, 1f), new Vector2(52f, -514f), new Vector2(300f, 34f));
-            var friends = CreateListContainer(panel.transform, "FriendsContainer", new Vector2(0f, 1f), new Vector2(52f, -560f), new Vector2(616f, 110f));
+            CreateText(panel.transform, "InvitesTitle", "Invitations de partie recues", 19f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(40f, -486f), new Vector2(460f, 26f));
+            CreateScrollableListContainer(panel.transform, "InvitesContainer", palette,
+                new Vector2(0f, 1f), new Vector2(40f, -520f), new Vector2(listWidth, 180f));
 
-            CreateText(panel.transform, "FriendsStatusLabel", "Connectez-vous pour synchroniser les amis.", 17f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -702f), new Vector2(620f, 40f));
+            CreateText(panel.transform, "AcceptedTitle", "Amis acceptes", 19f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(40f, -712f), new Vector2(420f, 26f));
+            CreateScrollableListContainer(panel.transform, "FriendsContainer", palette,
+                new Vector2(0f, 1f), new Vector2(40f, -746f), new Vector2(listWidth, 140f));
 
-            requests.name = "RequestsContainer";
-            friends.name = "FriendsContainer";
+            CreateText(panel.transform, "FriendsStatusLabel", "Connectez-vous pour synchroniser les amis.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -898f), new Vector2(680f, 22f));
+
             return panel;
         }
 
@@ -545,6 +647,8 @@ namespace QuixoUnity.EditorTools
             light.type = LightType.Directional;
             light.intensity = 1.55f;
             light.color = palette.KeyLight;
+            light.shadows = LightShadows.Soft;
+            light.shadowStrength = 0.36f;
         }
 
         private static void CreateEventSystem()
@@ -584,6 +688,48 @@ namespace QuixoUnity.EditorTools
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             return imageObject;
+        }
+
+        private static void CreateMenuFloatingMarks(Transform parent, GameplayPalette palette)
+        {
+            // Couleurs douces et translucides : on veut un effet decoratif premium, pas
+            // un truc qui distrait l'oeil par-dessus la carte du menu.
+            Color xColor = WithAlpha(palette.Player1, 0.18f);
+            Color oColor = WithAlpha(palette.Player2, 0.18f);
+
+            // 6 X et 6 O eparpilles. Les noms commencent par MenuToken_ pour etre captures
+            // par MenuVisualAnimator.
+            float[] xPositions = { -760f, -540f, -260f, 220f, 540f, 780f };
+            float[] yPositions = { 360f, -120f, 240f, -380f, 60f, -260f };
+            for (int i = 0; i < xPositions.Length; i++)
+            {
+                bool isX = i % 2 == 0;
+                string name = $"MenuToken_Mark{i:00}";
+                var label = CreateText(parent, name, isX ? "X" : "O", 96f + (i % 3) * 18f,
+                    TMPro.TextAlignmentOptions.Center,
+                    isX ? xColor : oColor,
+                    new Vector2(0.5f, 0.5f),
+                    new Vector2(xPositions[i], yPositions[i]),
+                    new Vector2(140f, 140f));
+                label.fontStyle = TMPro.FontStyles.Bold;
+                label.raycastTarget = false;
+            }
+
+            // 8 etoiles supplementaires plus grosses pour densifier le fond, placees sur
+            // les bords pour ne pas chevaucher la carte centrale.
+            for (int i = 0; i < 8; i++)
+            {
+                float angle = (i / 8f) * Mathf.PI * 2f;
+                float radius = 540f + (i % 2) * 80f;
+                float x = Mathf.Cos(angle) * radius;
+                float y = Mathf.Sin(angle) * (radius * 0.55f);
+                var star = new GameObject($"Star_Big{i:00}", typeof(RectTransform));
+                star.transform.SetParent(parent, false);
+                var image = star.AddComponent<Image>();
+                image.color = WithAlpha(palette.UiText, 0.10f + (i % 4) * 0.025f);
+                image.raycastTarget = false;
+                SetAnchored(image.rectTransform, new Vector2(0.5f, 0.5f), new Vector2(x, y), new Vector2(8f + (i % 3) * 4f, 8f + (i % 3) * 4f));
+            }
         }
 
         private static void CreatePremiumBackdrop(Transform parent, GameplayPalette palette, string prefix)
@@ -746,6 +892,74 @@ namespace QuixoUnity.EditorTools
             layout.childForceExpandHeight = false;
             layout.childForceExpandWidth = true;
             return rect;
+        }
+
+        // Cree un conteneur scrollable. Le RectTransform retourne porte le nom demande
+        // et contient un VerticalLayoutGroup + ContentSizeFitter : FriendsView peut y
+        // ajouter des rows sans craindre l'overflow visuel grace au Mask de la viewport.
+        private static RectTransform CreateScrollableListContainer(
+            Transform parent,
+            string name,
+            GameplayPalette palette,
+            Vector2 anchor,
+            Vector2 anchoredPosition,
+            Vector2 size)
+        {
+            var scrollRoot = new GameObject(name + "Scroll", typeof(RectTransform));
+            scrollRoot.transform.SetParent(parent, false);
+            var scrollRect = scrollRoot.GetComponent<RectTransform>();
+            SetAnchored(scrollRect, anchor, anchoredPosition, size);
+
+            var scrollBg = scrollRoot.AddComponent<Image>();
+            scrollBg.color = WithAlpha(palette.UiPanel, 0.18f);
+            scrollBg.raycastTarget = true;
+
+            var scroll = scrollRoot.AddComponent<ScrollRect>();
+            scroll.horizontal = false;
+            scroll.vertical = true;
+            scroll.movementType = ScrollRect.MovementType.Clamped;
+            scroll.scrollSensitivity = 18f;
+            scroll.inertia = false;
+
+            var viewport = new GameObject("Viewport", typeof(RectTransform));
+            viewport.transform.SetParent(scrollRoot.transform, false);
+            var viewportRect = viewport.GetComponent<RectTransform>();
+            viewportRect.anchorMin = Vector2.zero;
+            viewportRect.anchorMax = Vector2.one;
+            viewportRect.pivot = new Vector2(0f, 1f);
+            viewportRect.offsetMin = new Vector2(8f, 8f);
+            viewportRect.offsetMax = new Vector2(-8f, -8f);
+            var viewportImage = viewport.AddComponent<Image>();
+            viewportImage.color = Color.white;
+            viewportImage.raycastTarget = true;
+            var mask = viewport.AddComponent<Mask>();
+            mask.showMaskGraphic = false;
+
+            var content = new GameObject(name, typeof(RectTransform));
+            content.transform.SetParent(viewport.transform, false);
+            var contentRect = content.GetComponent<RectTransform>();
+            contentRect.anchorMin = new Vector2(0f, 1f);
+            contentRect.anchorMax = new Vector2(1f, 1f);
+            contentRect.pivot = new Vector2(0.5f, 1f);
+            contentRect.anchoredPosition = Vector2.zero;
+            contentRect.sizeDelta = new Vector2(0f, 0f);
+
+            var layout = content.AddComponent<VerticalLayoutGroup>();
+            layout.childAlignment = TextAnchor.UpperLeft;
+            layout.spacing = 8f;
+            layout.padding = new RectOffset(2, 2, 2, 2);
+            layout.childForceExpandHeight = false;
+            layout.childForceExpandWidth = true;
+            layout.childControlHeight = true;
+            layout.childControlWidth = true;
+
+            var fitter = content.AddComponent<ContentSizeFitter>();
+            fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+            fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+
+            scroll.viewport = viewportRect;
+            scroll.content = contentRect;
+            return contentRect;
         }
 
         private static TextMeshProUGUI CreateText(

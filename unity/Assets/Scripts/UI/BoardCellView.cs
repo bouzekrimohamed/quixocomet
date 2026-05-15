@@ -15,6 +15,10 @@ namespace QuixoUnity.UI
         [SerializeField] private TextMeshPro markText = null!;
         [SerializeField] private Image selectionRing = null!;
         [SerializeField] private GameObject selectionMarker = null!;
+        [SerializeField] private GameObject emptyTokenMarker = null!;
+        [SerializeField] private GameObject player1Token = null!;
+        [SerializeField] private GameObject player2Token = null!;
+        [SerializeField] private bool useTokenVisuals;
         [SerializeField] private Color emptyColor = new(0.92f, 0.82f, 0.62f);
         [SerializeField] private Color selectedColor = new(1f, 0.9f, 0.64f);
         [SerializeField] private Color player1Color = new(0.04f, 0.14f, 0.34f);
@@ -75,6 +79,27 @@ namespace QuixoUnity.UI
             CacheVisualPose();
         }
 
+        public void ConfigureTokenReferences(GameObject emptyMarker, GameObject player1, GameObject player2)
+        {
+            emptyTokenMarker = emptyMarker;
+            player1Token = player1;
+            player2Token = player2;
+            useTokenVisuals = emptyTokenMarker != null || player1Token != null || player2Token != null;
+
+            if (markText != null && useTokenVisuals)
+            {
+                markText.gameObject.SetActive(false);
+            }
+
+            ApplyTokenState(_currentMark);
+        }
+
+        public void ConfigureInteractionStyle(float hoverScaleOverride, float selectedLiftOverride)
+        {
+            hoverScale = hoverScaleOverride;
+            selectedLift = selectedLiftOverride;
+        }
+
         public void ConfigureStyle(Color empty, Color selected, Color player1, Color player2)
         {
             emptyColor = empty;
@@ -95,6 +120,22 @@ namespace QuixoUnity.UI
         public void SetState(PlayerMark mark, bool selected)
         {
             _selected = selected;
+            if (useTokenVisuals)
+            {
+                StopMarkFlip();
+                _currentMark = mark;
+                _hasRenderedState = true;
+                if (markText != null)
+                {
+                    markText.gameObject.SetActive(false);
+                }
+
+                ApplyTokenState(mark);
+                SetSelectionVisible(selected);
+                ApplyVisualPose();
+                return;
+            }
+
             string text = mark switch
             {
                 PlayerMark.Player1 => "X",
@@ -131,16 +172,7 @@ namespace QuixoUnity.UI
                 ApplyRendererColor(tileRenderer, selected ? selectedColor : emptyColor);
             }
 
-            if (selectionRing != null)
-            {
-                selectionRing.enabled = selected;
-            }
-
-            if (selectionMarker != null)
-            {
-                selectionMarker.SetActive(selected);
-            }
-
+            SetSelectionVisible(selected);
             ApplyVisualPose();
         }
 
@@ -152,15 +184,8 @@ namespace QuixoUnity.UI
             _selected = false;
             _currentMark = PlayerMark.None;
             _hasRenderedState = false;
-            if (selectionRing != null)
-            {
-                selectionRing.enabled = false;
-            }
-
-            if (selectionMarker != null)
-            {
-                selectionMarker.SetActive(false);
-            }
+            ApplyTokenState(PlayerMark.None);
+            SetSelectionVisible(false);
 
             ApplyVisualPose();
         }
@@ -398,6 +423,31 @@ namespace QuixoUnity.UI
             markText.ForceMeshUpdate();
         }
 
+        private void ApplyTokenState(PlayerMark mark)
+        {
+            if (!useTokenVisuals)
+            {
+                return;
+            }
+
+            SetObjectActive(emptyTokenMarker, mark == PlayerMark.None);
+            SetObjectActive(player1Token, mark == PlayerMark.Player1);
+            SetObjectActive(player2Token, mark == PlayerMark.Player2);
+        }
+
+        private void SetSelectionVisible(bool selected)
+        {
+            if (selectionRing != null)
+            {
+                selectionRing.enabled = selected;
+            }
+
+            if (selectionMarker != null)
+            {
+                selectionMarker.SetActive(selected);
+            }
+        }
+
         private void ApplyFlipPose(Transform target, float angle, float scale)
         {
             target.localScale = _baseVisualScale * scale;
@@ -430,6 +480,14 @@ namespace QuixoUnity.UI
             }
 
             material.color = color;
+        }
+
+        private static void SetObjectActive(GameObject target, bool active)
+        {
+            if (target != null)
+            {
+                target.SetActive(active);
+            }
         }
     }
 }

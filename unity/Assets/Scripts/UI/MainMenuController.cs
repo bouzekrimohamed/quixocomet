@@ -1,5 +1,6 @@
 using QuixoUnity.Auth;
 using QuixoUnity.Core;
+using QuixoUnity.Online;
 using QuixoUnity.Social;
 using TMPro;
 using UnityEngine;
@@ -17,6 +18,9 @@ namespace QuixoUnity.UI
         [SerializeField] private TextMeshProUGUI statusLabel;
         [SerializeField] private Button quixoButton;
         [SerializeField] private Button qometButton;
+        [SerializeField] private Button quixoOnlineButton;
+        [SerializeField] private Button qometOnlineButton;
+        [SerializeField] private Button cancelOnlineButton;
         [SerializeField] private Button friendsButton;
         [SerializeField] private Button themeButton;
         [SerializeField] private Button logoutButton;
@@ -25,9 +29,13 @@ namespace QuixoUnity.UI
         [SerializeField] private FriendsView friendsView;
         [SerializeField] private AuthService authService;
         [SerializeField] private FriendService friendService;
+        [SerializeField] private OnlineMatchService onlineMatchService;
+        [SerializeField] private OnlinePresenceService onlinePresenceService;
 
         private TextMeshProUGUI _themeButtonLabel;
         private bool _loadingGameplay;
+        private bool _searchingOnline;
+        private GameKind _searchingKind;
 
         private void Awake()
         {
@@ -36,6 +44,7 @@ namespace QuixoUnity.UI
             BindButtons();
             ApplyTheme();
             RefreshSessionDisplay();
+            RefreshOnlineAvailability();
             if (friendsPanel != null)
             {
                 friendsPanel.SetActive(false);
@@ -44,8 +53,10 @@ namespace QuixoUnity.UI
 
         private void Start()
         {
+            RefreshOnlineAvailability();
             if (SessionManager.IsOnline && authService != null)
             {
+                onlinePresenceService?.StartPresence();
                 authService.FetchCurrentProfile(result =>
                 {
                     if (result != null && result.Success)
@@ -54,6 +65,15 @@ namespace QuixoUnity.UI
                     }
                 });
             }
+            else if (SessionManager.IsOffline)
+            {
+                SetStatus("Mode invite : online indisponible. Connectez-vous pour jouer en ligne.");
+            }
+        }
+
+        private void OnDestroy()
+        {
+            onlinePresenceService?.StopPresence();
         }
 
         public void StartQuixo()
@@ -66,11 +86,76 @@ namespace QuixoUnity.UI
             StartGame(GameKind.Qomet);
         }
 
+        public void StartOnlineQuixo()
+        {
+            if (!RequireOnlineAccount())
+            {
+                return;
+            }
+
+            StartOnlineGame(GameKind.Quixo);
+        }
+
+        public void StartOnlineQomet()
+        {
+            if (!RequireOnlineAccount())
+            {
+                return;
+            }
+
+            StartOnlineGame(GameKind.Qomet);
+        }
+
+        private bool RequireOnlineAccount()
+        {
+            if (SessionManager.IsOnline)
+            {
+                return true;
+            }
+
+            SetStatus("Connectez-vous pour jouer en ligne.");
+            RefreshOnlineAvailability();
+            return false;
+        }
+
+        private void RefreshOnlineAvailability()
+        {
+            bool online = SessionManager.IsOnline;
+            SetInteractable(quixoOnlineButton, online && !_searchingOnline);
+            SetInteractable(qometOnlineButton, online && !_searchingOnline);
+            SetInteractable(friendsButton, online && !_searchingOnline);
+            if (!online && SessionManager.IsOffline && statusLabel != null && string.IsNullOrEmpty(statusLabel.text))
+            {
+                SetStatus("Connectez-vous pour jouer en ligne.");
+            }
+        }
+
+        public void CancelOnlineSearch()
+        {
+            if (!_searchingOnline || onlineMatchService == null)
+            {
+                SetOnlineSearching(false);
+                return;
+            }
+
+            onlineMatchService.CancelMatchmaking(_searchingKind, result =>
+            {
+                SetOnlineSearching(false);
+                SetStatus(result != null ? result.Message : "Recherche annulee.");
+            });
+        }
+
         public void ToggleFriends()
         {
             if (friendsPanel == null)
             {
                 SetStatus("Panneau amis introuvable.");
+                return;
+            }
+
+            if (!SessionManager.IsOnline)
+            {
+                SetStatus("Connectez-vous pour utiliser les amis et le online.");
                 return;
             }
 
@@ -97,6 +182,8 @@ namespace QuixoUnity.UI
         public void Logout()
         {
             authService?.Logout();
+            onlinePresenceService?.StopPresence();
+            OnlineSessionTransit.Clear();
             SessionManager.ClearSession();
             if (Application.CanStreamedLevelBeLoaded(AuthSceneName))
             {
@@ -119,6 +206,7 @@ namespace QuixoUnity.UI
                 return;
             }
 
+            OnlineSessionTransit.Clear();
             SceneTransit.SelectedGame = kind;
             SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
 
@@ -129,6 +217,57 @@ namespace QuixoUnity.UI
                 return;
             }
 
+            SetStatus("GameplayScene introuvable. Regenerer les scenes.");
+        }
+
+        private void StartOnlineGame(GameKind kind)
+        {
+            if (_loadingGameplay || _searchingOnline)
+            {
+                return;
+            }
+
+            if (!SessionManager.IsOnline)
+            {
+                SetStatus("Connectez-vous pour jouer en ligne.");
+                return;
+            }
+
+            onlineMatchService ??= FindObjectOfType<OnlineMatchService>();
+            if (onlineMatchService == null)
+            {
+                onlineMatchService = gameObject.AddComponent<OnlineMatchService>();
+            }
+
+            _searchingKind = kind;
+            SetOnlineSearching(true);
+            SetStatus($"Recherche d'un joueur {OnlineSessionTransit.GameKindName(kind)}...");
+            onlineMatchService.StartMatchmaking(kind, result =>
+            {
+                if (result == null || !result.Success || result.Match == null)
+                {
+                    SetOnlineSearching(false);
+                    SetStatus(result != null ? result.Message : "Matchmaking impossible.");
+                    return;
+                }
+
+                OnlineSessionTransit.Start(result.Match, SessionManager.UserId);
+                SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
+                SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
+                LoadGameplay();
+            }, SetStatus);
+        }
+
+        private void LoadGameplay()
+        {
+            if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
+            {
+                _loadingGameplay = true;
+                SceneManager.LoadScene(GameplaySceneName);
+                return;
+            }
+
+            SetOnlineSearching(false);
             SetStatus("GameplayScene introuvable. Regenerer les scenes.");
         }
 
@@ -146,10 +285,25 @@ namespace QuixoUnity.UI
                 friendService = gameObject.AddComponent<FriendService>();
             }
 
+            onlineMatchService ??= FindObjectOfType<OnlineMatchService>();
+            if (onlineMatchService == null)
+            {
+                onlineMatchService = gameObject.AddComponent<OnlineMatchService>();
+            }
+
+            onlinePresenceService ??= FindObjectOfType<OnlinePresenceService>();
+            if (onlinePresenceService == null)
+            {
+                onlinePresenceService = gameObject.AddComponent<OnlinePresenceService>();
+            }
+
             connectedLabel ??= FindChild<TextMeshProUGUI>("ConnectedLabel");
             statusLabel ??= FindChild<TextMeshProUGUI>("MenuStatusLabel");
             quixoButton ??= FindChild<Button>("QuixoButton");
             qometButton ??= FindChild<Button>("QometButton");
+            quixoOnlineButton ??= FindChild<Button>("QuixoOnlineButton");
+            qometOnlineButton ??= FindChild<Button>("QometOnlineButton");
+            cancelOnlineButton ??= FindChild<Button>("CancelOnlineButton");
             friendsButton ??= FindChild<Button>("FriendsButton");
             themeButton ??= FindChild<Button>("ThemeButton");
             logoutButton ??= FindChild<Button>("LogoutButton");
@@ -171,6 +325,9 @@ namespace QuixoUnity.UI
         {
             Bind(quixoButton, StartQuixo);
             Bind(qometButton, StartQomet);
+            Bind(quixoOnlineButton, StartOnlineQuixo);
+            Bind(qometOnlineButton, StartOnlineQomet);
+            Bind(cancelOnlineButton, CancelOnlineSearch);
             Bind(friendsButton, ToggleFriends);
             Bind(themeButton, CycleTheme);
             Bind(logoutButton, Logout);
@@ -209,11 +366,15 @@ namespace QuixoUnity.UI
 
             ApplyButton(quixoButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(qometButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(quixoOnlineButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(qometOnlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(cancelOnlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(friendsButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(themeButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(logoutButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(quitButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             RefreshThemeLabel();
+            SetOnlineSearching(_searchingOnline);
         }
 
         private void RefreshThemeLabel()
@@ -234,6 +395,29 @@ namespace QuixoUnity.UI
             if (statusLabel != null)
             {
                 statusLabel.text = message;
+            }
+        }
+
+        private void SetOnlineSearching(bool searching)
+        {
+            _searchingOnline = searching;
+            bool online = SessionManager.IsOnline;
+            SetInteractable(quixoButton, !searching);
+            SetInteractable(qometButton, !searching);
+            SetInteractable(quixoOnlineButton, !searching && online);
+            SetInteractable(qometOnlineButton, !searching && online);
+            SetInteractable(friendsButton, !searching && online);
+            if (friendsButton != null)
+            {
+                friendsButton.gameObject.SetActive(!searching);
+            }
+
+            SetInteractable(themeButton, !searching);
+            SetInteractable(logoutButton, !searching);
+            if (cancelOnlineButton != null)
+            {
+                cancelOnlineButton.gameObject.SetActive(searching);
+                cancelOnlineButton.interactable = searching;
             }
         }
 
@@ -291,6 +475,14 @@ namespace QuixoUnity.UI
             if (label != null)
             {
                 label.color = textColor;
+            }
+        }
+
+        private static void SetInteractable(Button button, bool interactable)
+        {
+            if (button != null)
+            {
+                button.interactable = interactable;
             }
         }
 

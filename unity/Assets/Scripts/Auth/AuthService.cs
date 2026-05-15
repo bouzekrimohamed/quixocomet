@@ -72,9 +72,23 @@ namespace QuixoUnity.Auth
             StartCoroutine(FetchProfileRoutine(SessionManager.UserId, onComplete));
         }
 
+        public void RefreshSession(Action<AuthOperationResult> onComplete)
+        {
+            StartCoroutine(RefreshSessionRoutine(onComplete));
+        }
+
         public void Logout()
         {
             SessionManager.ClearSession();
+        }
+
+        private IEnumerator RefreshSessionRoutine(Action<AuthOperationResult> onComplete)
+        {
+            bool refreshed = false;
+            yield return SupabaseRequestHelper.RefreshSessionRoutine(result => refreshed = result);
+            onComplete?.Invoke(refreshed
+                ? AuthOperationResult.Ok("Session rafraichie.")
+                : AuthOperationResult.Fail(SupabaseRequestHelper.SessionExpiredMessage));
         }
 
         private IEnumerator LoginRoutine(string identifier, string password, Action<AuthOperationResult> onComplete)
@@ -208,24 +222,28 @@ namespace QuixoUnity.Auth
         private IEnumerator FetchProfileRoutine(string userId, Action<AuthOperationResult> onComplete)
         {
             string url = $"{SupabaseSettings.Url}/rest/v1/profiles?id=eq.{UnityWebRequest.EscapeURL(userId)}&select=id,username,display_name,email,created_at";
-            using var request = CreateJsonRequest(url, "GET", null, SessionManager.AccessToken);
-            yield return request.SendWebRequest();
-
-            if (!IsSuccess(request))
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(url, "GET", null, SessionManager.AccessToken),
+                completed => request = completed);
+            using (request)
             {
-                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Profil inaccessible.")));
-                yield break;
-            }
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Profil inaccessible.")));
+                    yield break;
+                }
 
-            var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
-            if (profiles.Count == 0)
-            {
-                onComplete?.Invoke(AuthOperationResult.Fail("Profil introuvable."));
-                yield break;
-            }
+                var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
+                if (profiles.Count == 0)
+                {
+                    onComplete?.Invoke(AuthOperationResult.Fail("Profil introuvable."));
+                    yield break;
+                }
 
-            SessionManager.SaveProfile(profiles[0]);
-            onComplete?.Invoke(AuthOperationResult.Ok("Profil charge.", null, profiles[0]));
+                SessionManager.SaveProfile(profiles[0]);
+                onComplete?.Invoke(AuthOperationResult.Ok("Profil charge.", null, profiles[0]));
+            }
         }
 
         private IEnumerator ResolveEmailFromUsernameRoutine(string username, Action<AuthOperationResult> onComplete)
@@ -280,25 +298,7 @@ namespace QuixoUnity.Auth
 
         private static UnityWebRequest CreateJsonRequest(string url, string method, string json, string accessToken)
         {
-            var request = new UnityWebRequest(url, method)
-            {
-                downloadHandler = new DownloadHandlerBuffer()
-            };
-
-            if (json != null)
-            {
-                byte[] bytes = Encoding.UTF8.GetBytes(json);
-                request.uploadHandler = new UploadHandlerRaw(bytes);
-                request.SetRequestHeader("Content-Type", "application/json");
-            }
-
-            request.SetRequestHeader("apikey", SupabaseSettings.PublicAnonKey);
-            if (!string.IsNullOrWhiteSpace(accessToken))
-            {
-                request.SetRequestHeader("Authorization", $"Bearer {accessToken}");
-            }
-
-            return request;
+            return SupabaseRequestHelper.CreateJsonRequest(url, method, json, accessToken);
         }
 
         private static bool ValidateInput(string email, string password, Action<AuthOperationResult> onComplete)
@@ -337,46 +337,12 @@ namespace QuixoUnity.Auth
 
         private static bool IsSuccess(UnityWebRequest request)
         {
-            return request.result == UnityWebRequest.Result.Success && request.responseCode >= 200 && request.responseCode < 300;
+            return SupabaseRequestHelper.IsSuccess(request);
         }
 
         private static string ParseError(UnityWebRequest request, string fallback)
         {
-            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.DataProcessingError)
-            {
-                return "Connexion internet ou serveur indisponible.";
-            }
-
-            string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
-            if (!string.IsNullOrWhiteSpace(body))
-            {
-                string lowerBody = body.ToLowerInvariant();
-                if (lowerBody.Contains("invalid login") || lowerBody.Contains("invalid credentials"))
-                {
-                    return "Identifiants incorrects.";
-                }
-
-                var parsed = UnityEngine.JsonUtility.FromJson<AuthResponse>(body);
-                if (parsed != null)
-                {
-                    if (!string.IsNullOrWhiteSpace(parsed.error_description))
-                    {
-                        return parsed.error_description;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(parsed.msg))
-                    {
-                        return parsed.msg;
-                    }
-
-                    if (!string.IsNullOrWhiteSpace(parsed.error))
-                    {
-                        return parsed.error;
-                    }
-                }
-            }
-
-            return fallback;
+            return SupabaseRequestHelper.ParseError(request, fallback);
         }
 
         private static string GenerateUsername(string email)

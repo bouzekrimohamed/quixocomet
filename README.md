@@ -12,7 +12,10 @@ Projet Unity 2022.3.40f1 avec :
 - login par email ou username;
 - profil utilisateur simple;
 - ajout d'amis;
-- preparation pour une future V2 online.
+- presence online/offline;
+- invitations ami pour Quixo/Qomet;
+- matchmaking public Quixo/Qomet;
+- synchronisation des coups par polling Supabase.
 
 ## Lancer dans Unity
 
@@ -50,7 +53,13 @@ Ne jamais mettre de cle `service_role` dans Unity.
 3. Build Windows x86_64.
 4. Lancer le `.exe`.
 
-## V2 prevue
+## Online V1
 
-La V1 gere identite et amis.
-La V2 pourra ajouter les invitations et parties en ligne, sans changer la logique locale Quixo/Qomet.
+Apres la migration SQL de `unity/SUPABASE_SETUP.md`, deux comptes connectes peuvent :
+
+- voir la presence online/offline des amis;
+- inviter un ami en Quixo ou Qomet;
+- chercher un adversaire aleatoire;
+- jouer une partie online avec synchronisation des coups.
+
+La V1 online est client-authoritative. Une V2 devrait ajouter Supabase Realtime, RPC/Edge Functions pour valider les coups cote serveur, reconnexion, abandon, timer et classement.

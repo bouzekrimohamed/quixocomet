@@ -10,6 +10,8 @@ namespace QuixoUnity.Social
 {
     public sealed class FriendService : MonoBehaviour
     {
+        private string _lastError;
+
         public void SendFriendRequestByUsername(string username, Action<SocialOperationResult> onComplete)
         {
             if (!EnsureOnline(onComplete))
@@ -48,45 +50,94 @@ namespace QuixoUnity.Social
 
         private IEnumerator SendFriendRequestRoutine(string username, Action<SocialOperationResult> onComplete)
         {
-            yield return FindProfileByUsernameRoutine(username, result =>
+            SocialOperationResult lookup = null;
+            yield return FindProfileByUsernameRoutine(username, result => lookup = result);
+
+            if (lookup == null || !lookup.Success || lookup.Profile == null)
             {
-                if (!result.Success)
-                {
-                    onComplete?.Invoke(result);
-                    return;
-                }
+                onComplete?.Invoke(lookup ?? SocialOperationResult.Fail("Utilisateur introuvable."));
+                yield break;
+            }
 
-                if (result.Profile.id == SessionManager.UserId)
-                {
-                    onComplete?.Invoke(SocialOperationResult.Fail("Vous ne pouvez pas vous ajouter vous-meme."));
-                    return;
-                }
+            if (lookup.Profile.id == SessionManager.UserId)
+            {
+                onComplete?.Invoke(SocialOperationResult.Fail("Vous ne pouvez pas vous ajouter vous-meme."));
+                yield break;
+            }
 
-                StartCoroutine(CreateFriendRequestRoutine(result.Profile, onComplete));
+            bool relationExists = false;
+            string relationMessage = string.Empty;
+            yield return CheckExistingRelationRoutine(lookup.Profile.id, (exists, message) =>
+            {
+                relationExists = exists;
+                relationMessage = message;
             });
+
+            if (relationExists)
+            {
+                onComplete?.Invoke(SocialOperationResult.Fail(relationMessage));
+                yield break;
+            }
+
+            yield return CreateFriendRequestRoutine(lookup.Profile, onComplete);
         }
 
         private IEnumerator FindProfileByUsernameRoutine(string username, Action<SocialOperationResult> onComplete)
         {
-            string escapedUsername = UnityWebRequest.EscapeURL(username);
+            string escapedUsername = UnityWebRequest.EscapeURL(NormalizeUsernameForLookup(username));
             string url = $"{SupabaseSettings.Url}/rest/v1/profiles?username=eq.{escapedUsername}&select=id,username,display_name,created_at&limit=1";
-            using var request = CreateJsonRequest(url, "GET", null);
-            yield return request.SendWebRequest();
-
-            if (!IsSuccess(request))
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(url, "GET", null),
+                completed => request = completed);
+            using (request)
             {
-                onComplete?.Invoke(SocialOperationResult.Fail(ParseError(request, "Recherche impossible.")));
-                yield break;
-            }
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(SocialOperationResult.Fail(ParseError(request, "Recherche impossible.")));
+                    yield break;
+                }
 
-            var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
-            if (profiles.Count == 0)
+                var profiles = SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text);
+                if (profiles.Count == 0)
+                {
+                    onComplete?.Invoke(SocialOperationResult.Fail("Utilisateur introuvable."));
+                    yield break;
+                }
+
+                onComplete?.Invoke(SocialOperationResult.Ok("Profil trouve.", null, profiles[0]));
+            }
+        }
+
+        private IEnumerator CheckExistingRelationRoutine(string targetProfileId, Action<bool, string> onComplete)
+        {
+            string currentUserId = UnityWebRequest.EscapeURL(SessionManager.UserId);
+            string targetId = UnityWebRequest.EscapeURL(targetProfileId);
+            string url = $"{SupabaseSettings.Url}/rest/v1/friends?or=(and(requester_id.eq.{currentUserId},receiver_id.eq.{targetId}),and(requester_id.eq.{targetId},receiver_id.eq.{currentUserId}))&select=id,requester_id,receiver_id,status,created_at&limit=1";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(url, "GET", null),
+                completed => request = completed);
+            using (request)
             {
-                onComplete?.Invoke(SocialOperationResult.Fail("Aucun joueur trouve avec ce username."));
-                yield break;
-            }
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(true, ParseError(request, "Verification impossible."));
+                    yield break;
+                }
 
-            onComplete?.Invoke(SocialOperationResult.Ok("Profil trouve.", null, profiles[0]));
+                var relations = SupabaseJson.FromArray<FriendDto>(request.downloadHandler.text);
+                if (relations.Count == 0)
+                {
+                    onComplete?.Invoke(false, string.Empty);
+                    yield break;
+                }
+
+                string message = relations[0].status == "accepted"
+                    ? "Vous etes deja amis."
+                    : "Demande deja existante.";
+                onComplete?.Invoke(true, message);
+            }
         }
 
         private IEnumerator CreateFriendRequestRoutine(ProfileDto receiver, Action<SocialOperationResult> onComplete)
@@ -99,17 +150,25 @@ namespace QuixoUnity.Social
             };
 
             string url = $"{SupabaseSettings.Url}/rest/v1/friends";
-            using var request = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload));
-            request.SetRequestHeader("Prefer", "return=minimal");
-            yield return request.SendWebRequest();
-
-            if (!IsSuccess(request))
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload));
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            using (request)
             {
-                onComplete?.Invoke(SocialOperationResult.Fail(ParseError(request, "Demande deja envoyee ou impossible.")));
-                yield break;
-            }
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(SocialOperationResult.Fail(ParseError(request, "Demande deja envoyee ou impossible.")));
+                    yield break;
+                }
 
-            onComplete?.Invoke(SocialOperationResult.Ok($"Demande envoyee a {receiver.username}."));
+                onComplete?.Invoke(SocialOperationResult.Ok("Demande envoyee."));
+            }
         }
 
         private void UpdateRequestStatus(string requestId, string status, Action<SocialOperationResult> onComplete)
@@ -134,17 +193,25 @@ namespace QuixoUnity.Social
             string id = UnityWebRequest.EscapeURL(requestId);
             string userId = UnityWebRequest.EscapeURL(SessionManager.UserId);
             string url = $"{SupabaseSettings.Url}/rest/v1/friends?id=eq.{id}&receiver_id=eq.{userId}";
-            using var request = CreateJsonRequest(url, "PATCH", UnityEngine.JsonUtility.ToJson(payload));
-            request.SetRequestHeader("Prefer", "return=minimal");
-            yield return request.SendWebRequest();
-
-            if (!IsSuccess(request))
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "PATCH", UnityEngine.JsonUtility.ToJson(payload));
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            using (request)
             {
-                onComplete?.Invoke(SocialOperationResult.Fail(ParseError(request, "Mise a jour impossible.")));
-                yield break;
-            }
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(SocialOperationResult.Fail(ParseError(request, "Mise a jour impossible.")));
+                    yield break;
+                }
 
-            onComplete?.Invoke(SocialOperationResult.Ok(status == "accepted" ? "Demande acceptee." : "Demande refusee."));
+                onComplete?.Invoke(SocialOperationResult.Ok(status == "accepted" ? "Demande acceptee." : "Demande refusee."));
+            }
         }
 
         private IEnumerator LoadSummaryRoutine(Action<SocialOperationResult> onComplete)
@@ -156,12 +223,13 @@ namespace QuixoUnity.Social
             List<FriendDto> requests = null;
             List<FriendDto> friends = null;
 
+            _lastError = string.Empty;
             yield return FetchFriendsRoutine(requestsUrl, result => requests = result);
             yield return FetchFriendsRoutine(friendsUrl, result => friends = result);
 
             if (requests == null || friends == null)
             {
-                onComplete?.Invoke(SocialOperationResult.Fail("Impossible de charger les amis."));
+                onComplete?.Invoke(SocialOperationResult.Fail(string.IsNullOrWhiteSpace(_lastError) ? "Impossible de charger les amis." : _lastError));
                 yield break;
             }
 
@@ -204,9 +272,21 @@ namespace QuixoUnity.Social
 
         private IEnumerator FetchFriendsRoutine(string url, Action<List<FriendDto>> onComplete)
         {
-            using var request = CreateJsonRequest(url, "GET", null);
-            yield return request.SendWebRequest();
-            onComplete?.Invoke(IsSuccess(request) ? SupabaseJson.FromArray<FriendDto>(request.downloadHandler.text) : null);
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(url, "GET", null),
+                completed => request = completed);
+            using (request)
+            {
+                if (!IsSuccess(request))
+                {
+                    _lastError = ParseError(request, "Impossible de charger les amis.");
+                    onComplete?.Invoke(null);
+                    yield break;
+                }
+
+                onComplete?.Invoke(SupabaseJson.FromArray<FriendDto>(request.downloadHandler.text));
+            }
         }
 
         private IEnumerator FetchProfilesRoutine(HashSet<string> ids, Action<Dictionary<string, ProfileDto>> onComplete)
@@ -220,24 +300,29 @@ namespace QuixoUnity.Social
 
             string joinedIds = string.Join(",", ids);
             string url = $"{SupabaseSettings.Url}/rest/v1/profiles?id=in.({joinedIds})&select=id,username,display_name,created_at";
-            using var request = CreateJsonRequest(url, "GET", null);
-            yield return request.SendWebRequest();
-
-            if (!IsSuccess(request))
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(url, "GET", null),
+                completed => request = completed);
+            using (request)
             {
-                onComplete?.Invoke(result);
-                yield break;
-            }
-
-            foreach (var profile in SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text))
-            {
-                if (!string.IsNullOrWhiteSpace(profile.id))
+                if (!IsSuccess(request))
                 {
-                    result[profile.id] = profile;
+                    _lastError = ParseError(request, "Impossible de charger les profils amis.");
+                    onComplete?.Invoke(result);
+                    yield break;
                 }
-            }
 
-            onComplete?.Invoke(result);
+                foreach (var profile in SupabaseJson.FromArray<ProfileDto>(request.downloadHandler.text))
+                {
+                    if (!string.IsNullOrWhiteSpace(profile.id))
+                    {
+                        result[profile.id] = profile;
+                    }
+                }
+
+                onComplete?.Invoke(result);
+            }
         }
 
         private static FriendListItem ToListItem(FriendDto friend, string profileId, Dictionary<string, ProfileDto> profiles)
@@ -272,41 +357,17 @@ namespace QuixoUnity.Social
 
         private static UnityWebRequest CreateJsonRequest(string url, string method, string json)
         {
-            var request = new UnityWebRequest(url, method)
-            {
-                downloadHandler = new DownloadHandlerBuffer()
-            };
-
-            if (json != null)
-            {
-                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
-                request.SetRequestHeader("Content-Type", "application/json");
-            }
-
-            request.SetRequestHeader("apikey", SupabaseSettings.PublicAnonKey);
-            request.SetRequestHeader("Authorization", $"Bearer {SessionManager.AccessToken}");
-            return request;
+            return SupabaseRequestHelper.CreateAuthorizedJsonRequest(url, method, json);
         }
 
         private static bool IsSuccess(UnityWebRequest request)
         {
-            return request.result == UnityWebRequest.Result.Success && request.responseCode >= 200 && request.responseCode < 300;
+            return SupabaseRequestHelper.IsSuccess(request);
         }
 
         private static string ParseError(UnityWebRequest request, string fallback)
         {
-            if (request.result == UnityWebRequest.Result.ConnectionError || request.result == UnityWebRequest.Result.DataProcessingError)
-            {
-                return "Connexion internet ou serveur indisponible.";
-            }
-
-            string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
-            if (!string.IsNullOrWhiteSpace(body))
-            {
-                return body.Length > 180 ? body.Substring(0, 180) : body;
-            }
-
-            return fallback;
+            return SupabaseRequestHelper.ParseError(request, fallback);
         }
 
         private static string ShortId(string value)
@@ -317,6 +378,25 @@ namespace QuixoUnity.Social
             }
 
             return value.Length <= 8 ? value : value.Substring(0, 8);
+        }
+
+        private static string NormalizeUsernameForLookup(string raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder();
+            foreach (char c in raw.Trim().ToLowerInvariant())
+            {
+                if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_')
+                {
+                    builder.Append(c);
+                }
+            }
+
+            return builder.ToString();
         }
     }
 }

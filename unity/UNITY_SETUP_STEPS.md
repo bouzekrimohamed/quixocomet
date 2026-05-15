@@ -1,6 +1,6 @@
 # Unity Setup Steps
 
-Ce projet contient le jeu Unity natif Quixo/Qomet, avec intro video, splash fallback, authentification Supabase, profil, amis, menu premium et jeu local.
+Ce projet contient le jeu Unity natif Quixo/Qomet, avec intro video, splash fallback, authentification Supabase, profil, amis, menu premium, jeu local et V1 online par polling Supabase.
 Le Python reste separe et ne doit pas etre connecte a Unity pour cette version.
 
 ## 1. Ouvrir le projet
@@ -57,8 +57,10 @@ Important :
 5. Tester `Continuer hors ligne` si besoin.
 6. Tester `Inscription`, `Connexion`, login par username et `Mot de passe oublie`.
 7. Dans `MenuScene`, tester :
-   - `Jouer Quixo`;
-   - `Jouer Qomet`;
+   - `Jouer Quixo local`;
+   - `Jouer Qomet local`;
+   - `Jouer Quixo en ligne` avec un compte connecte;
+   - `Jouer Qomet en ligne` avec un compte connecte;
    - `Amis`;
    - `Theme`;
    - `Deconnexion`;
@@ -121,8 +123,20 @@ Verification attendue :
 - reset password ouvre le flux email Supabase;
 - menu et amis ne crashent pas;
 - Quixo/Qomet local restent jouables.
+- avec deux comptes, presence/invitations/matchmaking online fonctionnent apres migration SQL.
 
-## 8. Future V2 online
+## 8. Online V1
 
-La V1 prepare l'identite utilisateur et les amis.
-La V2 pourra ajouter invitations, matchmaking, synchronisation de partie, sauvegarde et validation serveur.
+La V1 online utilise REST/polling Supabase :
+
+- presence toutes les 10 secondes;
+- invitations entre amis depuis le panneau `Amis`;
+- matchmaking public via `Jouer Quixo en ligne` / `Jouer Qomet en ligne`;
+- polling des coups toutes les 1 seconde pendant la partie;
+- bouton `Recommencer` desactive en online, bouton `Menu` pour quitter.
+
+Pour tester online, utiliser deux comptes Supabase differents avec deux instances : Unity + build Windows, ou deux PC.
+
+## 9. Future V2 online
+
+Ajouter ensuite Supabase Realtime, validation serveur par RPC/Edge Function, reconnexion, abandon, timer et classement.

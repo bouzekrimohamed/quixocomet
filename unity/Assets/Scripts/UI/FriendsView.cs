@@ -1,23 +1,39 @@
+using System.Collections;
+using System.Collections.Generic;
 using QuixoUnity.Auth;
+using QuixoUnity.Core;
+using QuixoUnity.Online;
 using QuixoUnity.Social;
 using TMPro;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
 namespace QuixoUnity.UI
 {
     public sealed class FriendsView : MonoBehaviour
     {
+        private const string GameplaySceneName = "GameplayScene";
+        private const float AutoRefreshSeconds = 5f;
+
         [SerializeField] private TMP_InputField usernameInput;
         [SerializeField] private Button addButton;
         [SerializeField] private Button refreshButton;
         [SerializeField] private Button closeButton;
         [SerializeField] private TextMeshProUGUI statusLabel;
         [SerializeField] private RectTransform requestsContainer;
+        [SerializeField] private RectTransform invitesContainer;
         [SerializeField] private RectTransform friendsContainer;
         [SerializeField] private FriendService friendService;
+        [SerializeField] private OnlineMatchService onlineMatchService;
+        [SerializeField] private OnlinePresenceService onlinePresenceService;
 
         private bool _busy;
+        private bool _loadingAcceptedMatch;
+        private Coroutine _refreshRoutine;
+        private FriendSummary _lastSummary;
+        private Dictionary<string, bool> _lastPresence = new();
+        private string _lastConsumedInviteId = string.Empty;
 
         private void Awake()
         {
@@ -29,6 +45,19 @@ namespace QuixoUnity.UI
         private void OnEnable()
         {
             Refresh();
+            if (_refreshRoutine == null)
+            {
+                _refreshRoutine = StartCoroutine(AutoRefreshRoutine());
+            }
+        }
+
+        private void OnDisable()
+        {
+            if (_refreshRoutine != null)
+            {
+                StopCoroutine(_refreshRoutine);
+                _refreshRoutine = null;
+            }
         }
 
         public void AddFriend()
@@ -44,9 +73,16 @@ namespace QuixoUnity.UI
                 return;
             }
 
+            string raw = Read(usernameInput);
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                SetStatus("Entrez un username.");
+                return;
+            }
+
             SetBusy(true);
             SetStatus("Envoi de la demande...");
-            friendService.SendFriendRequestByUsername(Read(usernameInput), result =>
+            friendService.SendFriendRequestByUsername(raw, result =>
             {
                 SetBusy(false);
                 SetStatus(result != null ? result.Message : "Operation impossible.");
@@ -66,10 +102,14 @@ namespace QuixoUnity.UI
         {
             ResolveReferences();
             ClearList(requestsContainer);
+            ClearList(invitesContainer);
             ClearList(friendsContainer);
 
             if (!SessionManager.IsOnline)
             {
+                CreateInfoRow(requestsContainer, "Mode hors ligne.");
+                CreateInfoRow(invitesContainer, "Mode hors ligne.");
+                CreateInfoRow(friendsContainer, "Mode hors ligne.");
                 SetStatus("Mode hors ligne : amis indisponibles.");
                 return;
             }
@@ -90,8 +130,8 @@ namespace QuixoUnity.UI
                     return;
                 }
 
-                RenderSummary(result.Summary);
-                SetStatus("Amis a jour.");
+                _lastSummary = result.Summary;
+                LoadPresenceAndInvites(result.Summary);
             });
         }
 
@@ -124,43 +164,150 @@ namespace QuixoUnity.UI
 
             if (summary.Requests.Count == 0)
             {
-                CreateTextRow(requestsContainer, "Aucune demande recue.");
+                CreateInfoRow(requestsContainer, "Aucune demande d'ami recue.");
             }
             else
             {
                 foreach (var request in summary.Requests)
                 {
-                    CreateRequestRow(request);
+                    CreateFriendRequestRow(request);
                 }
             }
 
             if (summary.Friends.Count == 0)
             {
-                CreateTextRow(friendsContainer, "Aucun ami accepte pour le moment.");
+                CreateInfoRow(friendsContainer, "Aucun ami accepte pour le moment.");
             }
             else
             {
                 foreach (var friend in summary.Friends)
                 {
-                    string name = string.IsNullOrWhiteSpace(friend.DisplayName) ? friend.Username : friend.DisplayName;
-                    CreateTextRow(friendsContainer, name);
+                    CreateFriendRow(friend);
                 }
             }
         }
 
-        private void CreateRequestRow(FriendListItem item)
+        private void LoadPresenceAndInvites(FriendSummary summary)
+        {
+            RenderSummary(summary);
+            if (onlinePresenceService == null || onlineMatchService == null)
+            {
+                ClearList(invitesContainer);
+                CreateInfoRow(invitesContainer, "Service online indisponible.");
+                SetStatus("Amis a jour.");
+                return;
+            }
+
+            onlinePresenceService.GetFriendsPresence(summary != null ? summary.Friends : null, presence =>
+            {
+                _lastPresence = presence ?? new Dictionary<string, bool>();
+                RenderSummary(_lastSummary);
+                onlineMatchService.LoadPendingInvites(invites =>
+                {
+                    RenderSummary(_lastSummary);
+                    RenderMatchInvites(invites);
+                    onlineMatchService.LoadAcceptedSentInvites(accepted =>
+                    {
+                        if (TryOpenAcceptedSentInvite(accepted))
+                        {
+                            return;
+                        }
+
+                        SetStatus("Amis et invitations a jour.");
+                    });
+                });
+            });
+        }
+
+        private void RenderMatchInvites(List<MatchInviteDto> invites)
+        {
+            ClearList(invitesContainer);
+            if (invitesContainer == null)
+            {
+                return;
+            }
+
+            int rendered = 0;
+            if (invites != null)
+            {
+                foreach (var invite in invites)
+                {
+                    if (invite == null || invite.status != "pending")
+                    {
+                        continue;
+                    }
+
+                    CreateMatchInviteRow(invite);
+                    rendered++;
+                }
+            }
+
+            if (rendered == 0)
+            {
+                CreateInfoRow(invitesContainer, "Aucune invitation de partie en attente.");
+            }
+        }
+
+        private void CreateFriendRequestRow(FriendListItem item)
         {
             if (requestsContainer == null || item == null)
             {
                 return;
             }
 
-            var row = CreateRow(requestsContainer, $"Demande de {item.Username}");
-            var accept = CreateSmallButton(row.transform, "Accepter", VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme).UiButton);
-            var reject = CreateSmallButton(row.transform, "Refuser", VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme).UiButtonSecondary);
+            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            var row = CreateRow(requestsContainer, palette);
+            CreateRowDot(row.transform, palette, false, hidden: true);
+            string name = string.IsNullOrWhiteSpace(item.Username) ? "(inconnu)" : item.Username;
+            CreateRowLabel(row.transform, $"Demande de {name}", palette.UiText, palette, flex: true);
 
+            var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             accept.onClick.AddListener(() => UpdateRequest(item.RequestId, true));
             reject.onClick.AddListener(() => UpdateRequest(item.RequestId, false));
+        }
+
+        private void CreateMatchInviteRow(MatchInviteDto invite)
+        {
+            if (invitesContainer == null || invite == null)
+            {
+                return;
+            }
+
+            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            var row = CreateRow(invitesContainer, palette);
+            CreateRowDot(row.transform, palette, false, hidden: true);
+            string fromName = ResolveFriendName(invite.from_user_id);
+            string kind = string.IsNullOrWhiteSpace(invite.game_kind) ? "Quixo" : invite.game_kind;
+            CreateRowLabel(row.transform, $"{fromName} t'invite a jouer {kind}", palette.UiText, palette, flex: true);
+
+            var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            accept.onClick.AddListener(() => AcceptMatchInvite(invite));
+            reject.onClick.AddListener(() => RejectMatchInvite(invite));
+        }
+
+        private void CreateFriendRow(FriendListItem item)
+        {
+            if (friendsContainer == null || item == null)
+            {
+                return;
+            }
+
+            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            string name = string.IsNullOrWhiteSpace(item.DisplayName) ? item.Username : item.DisplayName;
+            bool isOnline = _lastPresence.TryGetValue(item.UserId, out bool online) && online;
+            var row = CreateRow(friendsContainer, palette);
+            CreateRowDot(row.transform, palette, isOnline);
+            string label = string.IsNullOrWhiteSpace(name) ? "(ami)" : name;
+            CreateRowLabel(row.transform, label, palette.UiText, palette, flex: true);
+
+            var quixo = CreateRowButton(row.transform, "Inviter Quixo", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            var qomet = CreateRowButton(row.transform, "Inviter Qomet", palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            quixo.interactable = isOnline;
+            qomet.interactable = isOnline;
+            quixo.onClick.AddListener(() => SendGameInvite(item, GameKind.Quixo));
+            qomet.onClick.AddListener(() => SendGameInvite(item, GameKind.Qomet));
         }
 
         private void UpdateRequest(string requestId, bool accept)
@@ -189,67 +336,271 @@ namespace QuixoUnity.UI
             }
         }
 
-        private GameObject CreateRow(Transform parent, string label)
+        private void SendGameInvite(FriendListItem friend, GameKind kind)
         {
-            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            if (_busy || friend == null)
+            {
+                return;
+            }
+
+            if (!SessionManager.IsOnline)
+            {
+                SetStatus("Connectez-vous pour inviter un ami.");
+                return;
+            }
+
+            SetBusy(true);
+            SetStatus($"Invitation {OnlineSessionTransit.GameKindName(kind)}...");
+            onlineMatchService.SendInvite(friend.UserId, kind, result =>
+            {
+                SetBusy(false);
+                SetStatus(result != null ? result.Message : "Invitation impossible.");
+                Refresh();
+            });
+        }
+
+        private void AcceptMatchInvite(MatchInviteDto invite)
+        {
+            if (_busy || invite == null)
+            {
+                return;
+            }
+
+            SetBusy(true);
+            SetStatus("Acceptation de l'invitation...");
+            onlineMatchService.AcceptInvite(invite, result =>
+            {
+                SetBusy(false);
+                if (result == null || !result.Success || result.Match == null)
+                {
+                    SetStatus(result != null ? result.Message : "Match impossible.");
+                    Refresh();
+                    return;
+                }
+
+                Debug.Log($"[Online] Accepted invite {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
+                OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.from_user_id));
+                SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
+                SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
+                if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
+                {
+                    SceneManager.LoadScene(GameplaySceneName);
+                    return;
+                }
+
+                SetStatus("GameplayScene introuvable. Regenerer les scenes.");
+            });
+        }
+
+        private void RejectMatchInvite(MatchInviteDto invite)
+        {
+            if (_busy || invite == null)
+            {
+                return;
+            }
+
+            SetBusy(true);
+            SetStatus("Refus de l'invitation...");
+            onlineMatchService.RejectInvite(invite.id, result =>
+            {
+                SetBusy(false);
+                SetStatus(result != null ? result.Message : "Refus impossible.");
+                Refresh();
+            });
+        }
+
+        private bool TryOpenAcceptedSentInvite(List<MatchInviteDto> invites)
+        {
+            if (_loadingAcceptedMatch || invites == null || invites.Count == 0)
+            {
+                return false;
+            }
+
+            var invite = invites[0];
+            if (invite == null || string.IsNullOrWhiteSpace(invite.match_id))
+            {
+                return false;
+            }
+
+            // Eviter de rouvrir un match deja consomme (eg. partie deja jouee puis terminee).
+            if (!string.IsNullOrEmpty(_lastConsumedInviteId) && _lastConsumedInviteId == invite.id)
+            {
+                return false;
+            }
+
+            _loadingAcceptedMatch = true;
+            SetStatus("Invitation acceptee. Chargement du match...");
+            onlineMatchService.FetchMatch(invite.match_id, result =>
+            {
+                _loadingAcceptedMatch = false;
+                if (result == null || !result.Success || result.Match == null)
+                {
+                    SetStatus(result != null ? result.Message : "Match introuvable.");
+                    return;
+                }
+
+                if (!string.Equals(result.Match.status, "active", System.StringComparison.OrdinalIgnoreCase))
+                {
+                    // Le match a deja ete joue ou annule, on ignore cette invitation accepted.
+                    _lastConsumedInviteId = invite.id;
+                    SetStatus("Aucune nouvelle invitation acceptee.");
+                    return;
+                }
+
+                _lastConsumedInviteId = invite.id;
+                Debug.Log($"[Online] Accepted invite (sender side) {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
+                OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.to_user_id));
+                SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
+                SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
+                if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
+                {
+                    SceneManager.LoadScene(GameplaySceneName);
+                    return;
+                }
+
+                SetStatus("GameplayScene introuvable. Regenerer les scenes.");
+            });
+
+            return true;
+        }
+
+        private GameObject CreateRow(Transform parent, GameplayPalette palette)
+        {
             var row = new GameObject("FriendRow", typeof(RectTransform));
             row.transform.SetParent(parent, false);
             var rect = row.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(0f, 38f);
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(1f, 1f);
+            rect.pivot = new Vector2(0.5f, 1f);
+            rect.sizeDelta = new Vector2(0f, 60f);
+
+            var bg = row.AddComponent<Image>();
+            bg.color = new Color(palette.UiPanel.r, palette.UiPanel.g, palette.UiPanel.b, 0.40f);
+            bg.raycastTarget = false;
 
             var layout = row.AddComponent<HorizontalLayoutGroup>();
             layout.childAlignment = TextAnchor.MiddleLeft;
-            layout.spacing = 8f;
-            layout.childForceExpandHeight = false;
+            layout.spacing = 10f;
+            layout.padding = new RectOffset(14, 14, 6, 6);
+            layout.childForceExpandHeight = true;
             layout.childForceExpandWidth = false;
+            layout.childControlHeight = true;
+            layout.childControlWidth = true;
 
-            var textObject = new GameObject("Label");
-            textObject.transform.SetParent(row.transform, false);
-            var text = textObject.AddComponent<TextMeshProUGUI>();
-            text.text = label;
-            text.fontSize = 18f;
-            text.color = palette.UiText;
-            text.enableWordWrapping = false;
-            var layoutElement = textObject.AddComponent<LayoutElement>();
-            layoutElement.preferredWidth = 250f;
-            layoutElement.preferredHeight = 34f;
+            var element = row.AddComponent<LayoutElement>();
+            element.preferredHeight = 60f;
+            element.minHeight = 60f;
+            element.flexibleHeight = 0f;
+            element.flexibleWidth = 1f;
             return row;
         }
 
-        private void CreateTextRow(Transform parent, string label)
+        private void CreateInfoRow(Transform parent, string label)
         {
-            if (parent != null)
+            if (parent == null)
             {
-                CreateRow(parent, label);
+                return;
             }
+
+            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            var row = CreateRow(parent, palette);
+            CreateRowLabel(row.transform, label, palette.UiMuted, palette, flex: true);
         }
 
-        private Button CreateSmallButton(Transform parent, string label, Color color)
+        private void CreateRowDot(Transform parent, GameplayPalette palette, bool isOnline, bool hidden = false)
         {
-            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            var dot = new GameObject("StatusDot", typeof(RectTransform));
+            dot.transform.SetParent(parent, false);
+
+            var image = dot.AddComponent<Image>();
+            image.color = hidden
+                ? new Color(0f, 0f, 0f, 0f)
+                : isOnline ? new Color(0.26f, 0.86f, 0.42f, 1f) : new Color(0.92f, 0.30f, 0.24f, 1f);
+            image.raycastTarget = false;
+
+            if (!hidden)
+            {
+                var outline = dot.AddComponent<Outline>();
+                outline.effectColor = new Color(0f, 0f, 0f, 0.45f);
+                outline.effectDistance = new Vector2(1f, -1f);
+            }
+
+            var element = dot.AddComponent<LayoutElement>();
+            element.preferredWidth = 20f;
+            element.preferredHeight = 20f;
+            element.minWidth = 20f;
+            element.minHeight = 20f;
+            element.flexibleWidth = 0f;
+            element.flexibleHeight = 0f;
+        }
+
+        private TextMeshProUGUI CreateRowLabel(Transform parent, string text, Color color, GameplayPalette palette, bool flex)
+        {
+            var labelObject = new GameObject("Label", typeof(RectTransform));
+            labelObject.transform.SetParent(parent, false);
+
+            var label = labelObject.AddComponent<TextMeshProUGUI>();
+            label.text = text;
+            label.fontSize = 17f;
+            label.color = color;
+            label.alignment = TextAlignmentOptions.MidlineLeft;
+            label.enableWordWrapping = false;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+            label.raycastTarget = false;
+
+            var element = labelObject.AddComponent<LayoutElement>();
+            element.minWidth = flex ? 120f : 60f;
+            element.preferredWidth = flex ? 220f : 100f;
+            element.flexibleWidth = flex ? 1f : 0f;
+            element.preferredHeight = 44f;
+            element.minHeight = 44f;
+            element.flexibleHeight = 0f;
+            return label;
+        }
+
+        private Button CreateRowButton(Transform parent, string label, Color background, Color textColor, Color disabledColor)
+        {
             var buttonObject = new GameObject(label + "Button", typeof(RectTransform));
             buttonObject.transform.SetParent(parent, false);
+
             var image = buttonObject.AddComponent<Image>();
-            image.color = color;
+            image.color = background;
+            image.raycastTarget = true;
+
+            // Petite ombre pour mieux distinguer les boutons du fond translucide.
+            var shadow = buttonObject.AddComponent<Shadow>();
+            shadow.effectColor = new Color(0f, 0f, 0f, 0.32f);
+            shadow.effectDistance = new Vector2(0f, -2f);
+
             var button = buttonObject.AddComponent<Button>();
             button.targetGraphic = image;
-            ApplyButton(button, color, palette.UiText, palette.UiButtonDisabled);
-            var layout = buttonObject.AddComponent<LayoutElement>();
-            layout.preferredWidth = 92f;
-            layout.preferredHeight = 34f;
+            ApplyButton(button, background, textColor, disabledColor);
 
-            var textObject = new GameObject("Text");
+            var element = buttonObject.AddComponent<LayoutElement>();
+            element.preferredWidth = 130f;
+            element.minWidth = 116f;
+            element.preferredHeight = 44f;
+            element.minHeight = 44f;
+            element.flexibleHeight = 0f;
+            element.flexibleWidth = 0f;
+
+            var textObject = new GameObject("Text", typeof(RectTransform));
             textObject.transform.SetParent(buttonObject.transform, false);
-            var text = textObject.AddComponent<TextMeshProUGUI>();
-            text.text = label;
-            text.fontSize = 15f;
-            text.alignment = TextAlignmentOptions.Center;
-            text.color = palette.UiText;
-            var rect = text.rectTransform;
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
+            var tmp = textObject.AddComponent<TextMeshProUGUI>();
+            tmp.text = label;
+            tmp.fontSize = 16f;
+            tmp.fontStyle = FontStyles.Bold;
+            tmp.alignment = TextAlignmentOptions.Center;
+            tmp.color = textColor;
+            tmp.enableWordWrapping = false;
+            tmp.overflowMode = TextOverflowModes.Ellipsis;
+            tmp.raycastTarget = false;
+
+            var textRect = tmp.rectTransform;
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = new Vector2(4f, 0f);
+            textRect.offsetMax = new Vector2(-4f, 0f);
             return button;
         }
 
@@ -261,12 +612,25 @@ namespace QuixoUnity.UI
                 friendService = gameObject.AddComponent<FriendService>();
             }
 
+            onlineMatchService ??= FindObjectOfType<OnlineMatchService>();
+            if (onlineMatchService == null)
+            {
+                onlineMatchService = gameObject.AddComponent<OnlineMatchService>();
+            }
+
+            onlinePresenceService ??= FindObjectOfType<OnlinePresenceService>();
+            if (onlinePresenceService == null)
+            {
+                onlinePresenceService = gameObject.AddComponent<OnlinePresenceService>();
+            }
+
             usernameInput ??= FindChild<TMP_InputField>("FriendUsernameInput");
             addButton ??= FindChild<Button>("AddFriendButton");
             refreshButton ??= FindChild<Button>("RefreshFriendsButton");
             closeButton ??= FindChild<Button>("CloseFriendsButton");
             statusLabel ??= FindChild<TextMeshProUGUI>("FriendsStatusLabel");
             requestsContainer ??= FindChild<RectTransform>("RequestsContainer");
+            invitesContainer ??= FindChild<RectTransform>("InvitesContainer");
             friendsContainer ??= FindChild<RectTransform>("FriendsContainer");
         }
 
@@ -275,6 +639,18 @@ namespace QuixoUnity.UI
             Bind(addButton, AddFriend);
             Bind(refreshButton, Refresh);
             Bind(closeButton, Close);
+        }
+
+        private IEnumerator AutoRefreshRoutine()
+        {
+            while (isActiveAndEnabled)
+            {
+                yield return new WaitForSeconds(AutoRefreshSeconds);
+                if (!_busy && SessionManager.IsOnline && gameObject.activeInHierarchy)
+                {
+                    Refresh();
+                }
+            }
         }
 
         private void SetBusy(bool busy)
@@ -291,6 +667,32 @@ namespace QuixoUnity.UI
             {
                 statusLabel.text = message;
             }
+        }
+
+        private string ResolveFriendName(string userId)
+        {
+            if (_lastSummary == null || string.IsNullOrWhiteSpace(userId))
+            {
+                return "Un ami";
+            }
+
+            foreach (var friend in _lastSummary.Friends)
+            {
+                if (friend.UserId == userId)
+                {
+                    return string.IsNullOrWhiteSpace(friend.DisplayName) ? friend.Username : friend.DisplayName;
+                }
+            }
+
+            foreach (var request in _lastSummary.Requests)
+            {
+                if (request.UserId == userId)
+                {
+                    return string.IsNullOrWhiteSpace(request.DisplayName) ? request.Username : request.DisplayName;
+                }
+            }
+
+            return "Un joueur";
         }
 
         private static void ClearList(Transform container)
@@ -343,6 +745,11 @@ namespace QuixoUnity.UI
             colors.pressedColor = Color.Lerp(normalColor, Color.black, 0.18f);
             colors.disabledColor = disabledColor;
             button.colors = colors;
+
+            if (button.targetGraphic != null)
+            {
+                button.targetGraphic.color = button.interactable ? normalColor : disabledColor;
+            }
 
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)

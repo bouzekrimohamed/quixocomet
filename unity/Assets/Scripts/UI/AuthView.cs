@@ -1,3 +1,4 @@
+using System.Collections;
 using QuixoUnity.Auth;
 using TMPro;
 using UnityEngine;
@@ -10,23 +11,47 @@ namespace QuixoUnity.UI
     {
         private const string MenuSceneName = "MenuScene";
 
+        private enum AuthMode
+        {
+            SignIn,
+            SignUp,
+            Guest
+        }
+
         [SerializeField] private TMP_InputField emailInput;
         [SerializeField] private TMP_InputField passwordInput;
         [SerializeField] private TMP_InputField usernameInput;
+        [SerializeField] private TMP_InputField signInCredentialInput;
+        [SerializeField] private TMP_InputField signInPasswordInput;
+        [SerializeField] private TMP_InputField signUpEmailInput;
+        [SerializeField] private TMP_InputField signUpUsernameInput;
+        [SerializeField] private TMP_InputField signUpPasswordInput;
         [SerializeField] private Button loginButton;
         [SerializeField] private Button registerButton;
         [SerializeField] private Button resetPasswordButton;
         [SerializeField] private Button offlineButton;
+        [SerializeField] private Button showSignInButton;
+        [SerializeField] private Button showSignUpButton;
+        [SerializeField] private Button showGuestButton;
+        [SerializeField] private Button createAccountButton;
+        [SerializeField] private Button alreadyAccountButton;
+        [SerializeField] private CanvasGroup signInPanel;
+        [SerializeField] private CanvasGroup signUpPanel;
+        [SerializeField] private CanvasGroup guestPanel;
+        [SerializeField] private float modeTransitionDuration = 0.16f;
         [SerializeField] private TextMeshProUGUI messageLabel;
         [SerializeField] private AuthService authService;
 
+        private AuthMode _mode = AuthMode.SignIn;
         private bool _busy;
+        private Coroutine _modeRoutine;
 
         private void Awake()
         {
             ResolveReferences();
             BindButtons();
             ApplyTheme();
+            SetMode(AuthMode.SignIn, false);
 
             if (!SupabaseSettings.IsConfigured)
             {
@@ -43,7 +68,7 @@ namespace QuixoUnity.UI
 
             SetBusy(true);
             SetMessage("Connexion...", true);
-            authService.Login(Read(emailInput), Read(passwordInput), OnAuthComplete);
+            authService.Login(Read(SignInCredential), Read(SignInPassword), OnAuthComplete);
         }
 
         public void ResetPassword()
@@ -55,7 +80,7 @@ namespace QuixoUnity.UI
 
             SetBusy(true);
             SetMessage("Envoi de l'email...", true);
-            authService.SendPasswordReset(Read(emailInput), result =>
+            authService.SendPasswordReset(Read(SignInCredential), result =>
             {
                 SetBusy(false);
                 if (result == null)
@@ -77,7 +102,7 @@ namespace QuixoUnity.UI
 
             SetBusy(true);
             SetMessage("Inscription...", true);
-            authService.Register(Read(emailInput), Read(passwordInput), Read(usernameInput), OnAuthComplete);
+            authService.Register(Read(SignUpEmail), Read(SignUpPassword), Read(SignUpUsername), OnAuthComplete);
         }
 
         public void ContinueOffline()
@@ -90,6 +115,27 @@ namespace QuixoUnity.UI
             SessionManager.StartOffline();
             LoadMenu();
         }
+
+        public void ShowSignIn()
+        {
+            SetMode(AuthMode.SignIn, true);
+        }
+
+        public void ShowSignUp()
+        {
+            SetMode(AuthMode.SignUp, true);
+        }
+
+        public void ShowGuest()
+        {
+            SetMode(AuthMode.Guest, true);
+        }
+
+        private TMP_InputField SignInCredential => signInCredentialInput != null ? signInCredentialInput : emailInput;
+        private TMP_InputField SignInPassword => signInPasswordInput != null ? signInPasswordInput : passwordInput;
+        private TMP_InputField SignUpEmail => signUpEmailInput != null ? signUpEmailInput : emailInput;
+        private TMP_InputField SignUpUsername => signUpUsernameInput != null ? signUpUsernameInput : usernameInput;
+        private TMP_InputField SignUpPassword => signUpPasswordInput != null ? signUpPasswordInput : passwordInput;
 
         private void OnAuthComplete(AuthOperationResult result)
         {
@@ -129,17 +175,34 @@ namespace QuixoUnity.UI
             emailInput ??= FindChild<TMP_InputField>("EmailInput");
             passwordInput ??= FindChild<TMP_InputField>("PasswordInput");
             usernameInput ??= FindChild<TMP_InputField>("UsernameInput");
+            signInCredentialInput ??= FindChild<TMP_InputField>("SignInCredentialInput");
+            signInPasswordInput ??= FindChild<TMP_InputField>("SignInPasswordInput");
+            signUpEmailInput ??= FindChild<TMP_InputField>("SignUpEmailInput");
+            signUpUsernameInput ??= FindChild<TMP_InputField>("SignUpUsernameInput");
+            signUpPasswordInput ??= FindChild<TMP_InputField>("SignUpPasswordInput");
+            signInPanel ??= FindChild<CanvasGroup>("SignInPanel");
+            signUpPanel ??= FindChild<CanvasGroup>("SignUpPanel");
+            guestPanel ??= FindChild<CanvasGroup>("GuestPanel");
             loginButton ??= FindChild<Button>("LoginButton");
             registerButton ??= FindChild<Button>("RegisterButton");
             resetPasswordButton ??= FindChild<Button>("ResetPasswordButton");
             offlineButton ??= FindChild<Button>("OfflineButton");
+            showSignInButton ??= FindChild<Button>("ShowSignInButton");
+            showSignUpButton ??= FindChild<Button>("ShowSignUpButton");
+            showGuestButton ??= FindChild<Button>("ShowGuestButton");
+            createAccountButton ??= FindChild<Button>("CreateAccountButton");
+            alreadyAccountButton ??= FindChild<Button>("AlreadyAccountButton");
             messageLabel ??= FindChild<TextMeshProUGUI>("MessageLabel");
 
-            if (passwordInput != null)
-            {
-                passwordInput.contentType = TMP_InputField.ContentType.Password;
-                passwordInput.ForceLabelUpdate();
-            }
+            signInCredentialInput ??= emailInput;
+            signInPasswordInput ??= passwordInput;
+            signUpEmailInput ??= emailInput;
+            signUpUsernameInput ??= usernameInput;
+            signUpPasswordInput ??= passwordInput;
+
+            PreparePasswordField(passwordInput);
+            PreparePasswordField(signInPasswordInput);
+            PreparePasswordField(signUpPasswordInput);
         }
 
         private void BindButtons()
@@ -148,6 +211,11 @@ namespace QuixoUnity.UI
             Bind(registerButton, Register);
             Bind(resetPasswordButton, ResetPassword);
             Bind(offlineButton, ContinueOffline);
+            Bind(showSignInButton, ShowSignIn);
+            Bind(showSignUpButton, ShowSignUp);
+            Bind(showGuestButton, ShowGuest);
+            Bind(createAccountButton, ShowSignUp);
+            Bind(alreadyAccountButton, ShowSignIn);
         }
 
         private void ApplyTheme()
@@ -160,14 +228,26 @@ namespace QuixoUnity.UI
             ApplyInput(emailInput, palette);
             ApplyInput(passwordInput, palette);
             ApplyInput(usernameInput, palette);
+            ApplyInput(signInCredentialInput, palette);
+            ApplyInput(signInPasswordInput, palette);
+            ApplyInput(signUpEmailInput, palette);
+            ApplyInput(signUpUsernameInput, palette);
+            ApplyInput(signUpPasswordInput, palette);
             ApplyButton(loginButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(registerButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(resetPasswordButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(offlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(showSignInButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(showSignUpButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(showGuestButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(createAccountButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(alreadyAccountButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             if (messageLabel != null)
             {
                 messageLabel.color = palette.UiMuted;
             }
+
+            UpdateModeButtonState();
         }
 
         private void SetBusy(bool busy)
@@ -177,6 +257,11 @@ namespace QuixoUnity.UI
             SetInteractable(registerButton, !busy);
             SetInteractable(resetPasswordButton, !busy);
             SetInteractable(offlineButton, !busy);
+            SetInteractable(showSignInButton, !busy);
+            SetInteractable(showSignUpButton, !busy);
+            SetInteractable(showGuestButton, !busy);
+            SetInteractable(createAccountButton, !busy);
+            SetInteractable(alreadyAccountButton, !busy);
         }
 
         private void SetMessage(string message, bool success)
@@ -189,6 +274,119 @@ namespace QuixoUnity.UI
             var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
             messageLabel.text = message;
             messageLabel.color = success ? palette.UiText : new Color(1f, 0.58f, 0.42f, 1f);
+        }
+
+        private void SetMode(AuthMode mode, bool animate)
+        {
+            _mode = mode;
+
+            if (signInPanel == null && signUpPanel == null && guestPanel == null)
+            {
+                UpdateModeButtonState();
+                return;
+            }
+
+            var target = PanelFor(mode);
+            HidePanel(signInPanel, target);
+            HidePanel(signUpPanel, target);
+            HidePanel(guestPanel, target);
+
+            if (target != null)
+            {
+                target.gameObject.SetActive(true);
+                target.interactable = true;
+                target.blocksRaycasts = true;
+
+                if (_modeRoutine != null)
+                {
+                    StopCoroutine(_modeRoutine);
+                    _modeRoutine = null;
+                }
+
+                if (animate && isActiveAndEnabled && modeTransitionDuration > 0f)
+                {
+                    _modeRoutine = StartCoroutine(AnimatePanelIn(target));
+                }
+                else
+                {
+                    target.alpha = 1f;
+                    target.transform.localScale = Vector3.one;
+                }
+            }
+
+            UpdateModeButtonState();
+        }
+
+        private CanvasGroup PanelFor(AuthMode mode)
+        {
+            return mode switch
+            {
+                AuthMode.SignUp => signUpPanel,
+                AuthMode.Guest => guestPanel,
+                _ => signInPanel,
+            };
+        }
+
+        private static void HidePanel(CanvasGroup panel, CanvasGroup target)
+        {
+            if (panel == null || panel == target)
+            {
+                return;
+            }
+
+            panel.alpha = 0f;
+            panel.interactable = false;
+            panel.blocksRaycasts = false;
+            panel.gameObject.SetActive(false);
+        }
+
+        private IEnumerator AnimatePanelIn(CanvasGroup panel)
+        {
+            panel.alpha = 0f;
+            panel.transform.localScale = Vector3.one * 0.975f;
+            float elapsed = 0f;
+            while (elapsed < modeTransitionDuration)
+            {
+                elapsed += Time.deltaTime;
+                float t = Mathf.Clamp01(elapsed / modeTransitionDuration);
+                float eased = 1f - Mathf.Pow(1f - t, 3f);
+                panel.alpha = eased;
+                panel.transform.localScale = Vector3.Lerp(Vector3.one * 0.975f, Vector3.one, eased);
+                yield return null;
+            }
+
+            panel.alpha = 1f;
+            panel.transform.localScale = Vector3.one;
+            _modeRoutine = null;
+        }
+
+        private void UpdateModeButtonState()
+        {
+            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            ApplyModeButton(showSignInButton, _mode == AuthMode.SignIn, palette);
+            ApplyModeButton(showSignUpButton, _mode == AuthMode.SignUp, palette);
+            ApplyModeButton(showGuestButton, _mode == AuthMode.Guest, palette);
+        }
+
+        private static void ApplyModeButton(Button button, bool active, GameplayPalette palette)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            ApplyButton(button, active ? palette.UiButton : palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+        }
+
+        private static void PreparePasswordField(TMP_InputField input)
+        {
+            if (input == null)
+            {
+                return;
+            }
+
+            input.contentType = TMP_InputField.ContentType.Password;
+            input.ForceLabelUpdate();
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action)

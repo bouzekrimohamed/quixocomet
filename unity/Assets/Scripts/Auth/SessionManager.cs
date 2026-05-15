@@ -27,15 +27,7 @@ namespace QuixoUnity.Auth
                 return;
             }
 
-            PlayerPrefs.SetInt(OfflineKey, 0);
-            PlayerPrefs.SetString(AccessTokenKey, response.access_token ?? string.Empty);
-            PlayerPrefs.SetString(RefreshTokenKey, response.refresh_token ?? string.Empty);
-
-            if (response.user != null)
-            {
-                PlayerPrefs.SetString(UserIdKey, response.user.id ?? string.Empty);
-                PlayerPrefs.SetString(EmailKey, response.user.email ?? string.Empty);
-            }
+            UpdateSession(response, false);
 
             if (profile != null && !string.IsNullOrWhiteSpace(profile.username))
             {
@@ -43,6 +35,43 @@ namespace QuixoUnity.Auth
             }
 
             PlayerPrefs.Save();
+        }
+
+        public static void UpdateSession(AuthResponse response, bool save = true)
+        {
+            if (response == null)
+            {
+                return;
+            }
+
+            PlayerPrefs.SetInt(OfflineKey, 0);
+            if (!string.IsNullOrWhiteSpace(response.access_token))
+            {
+                PlayerPrefs.SetString(AccessTokenKey, response.access_token);
+            }
+
+            if (!string.IsNullOrWhiteSpace(response.refresh_token))
+            {
+                PlayerPrefs.SetString(RefreshTokenKey, response.refresh_token);
+            }
+
+            if (response.user != null)
+            {
+                if (!string.IsNullOrWhiteSpace(response.user.id))
+                {
+                    PlayerPrefs.SetString(UserIdKey, response.user.id);
+                }
+
+                if (!string.IsNullOrWhiteSpace(response.user.email))
+                {
+                    PlayerPrefs.SetString(EmailKey, response.user.email);
+                }
+            }
+
+            if (save)
+            {
+                PlayerPrefs.Save();
+            }
         }
 
         public static void SaveProfile(ProfileDto profile)
