@@ -23,3 +23,5 @@ unity/Assets/Scripts/Auth/SupabaseLocalConfig.cs
 unity/Assets/Scripts/Auth/SupabaseLocalConfig.cs.meta
 
 unity/BuildWindows/
+
+.claude/worktrees/
