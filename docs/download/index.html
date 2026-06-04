@@ -3,44 +3,114 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Télécharger Quixo / Qomet pour Windows, Linux et macOS.">
-  <title>Quixo / Qomet - Télécharger</title>
+  <meta name="description" content="Telecharger Quixo / Qomet pour Windows et Linux. Version macOS bientot disponible.">
+  <title>Quixo / Qomet - Telecharger</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="orb orb-a"></div><div class="orb orb-b"></div><div class="grid"></div>
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="grid"></div>
+
   <header class="hero">
-    <span class="eyebrow">Deux jeux, un même défi</span>
+    <span class="eyebrow">Projet etudiant Unity</span>
     <h1>Quixo <i>/</i> Qomet</h1>
-    <p>Jeu de stratégie local et en ligne</p>
-    <a class="primary" href="#download">Télécharger le jeu</a>
+    <p>Deux jeux de plateau, jouables en local et en ligne.</p>
+    <a class="primary" href="#download">Telecharger le jeu</a>
   </header>
 
   <main>
     <section id="download">
-      <div class="section-title"><span>01</span><h2>Télécharger</h2></div>
+      <div class="section-title"><span>01</span><h2>Telecharger</h2></div>
       <div class="cards">
-        <article class="card"><div class="os">WIN</div><h3>Windows</h3><p>Le build étudiant n'est pas signé. Windows peut afficher SmartScreen ou Smart App Control.</p><a data-download="windows">Télécharger</a></article>
-        <article class="card"><div class="os">LIN</div><h3>Linux</h3><p>Après extraction, lancer <code>chmod +x</code> sur l'exécutable si nécessaire.</p><a data-download="linux">Télécharger</a></article>
-        <article class="card"><div class="os">MAC</div><h3>macOS</h3><p>La version macOS est en préparation.</p><a data-download="macos">Bientôt disponible</a></article>
+        <article class="card">
+          <div class="os">WIN</div>
+          <h3>Windows</h3>
+          <p>Build x86_64 livre dans une archive ZIP. Le build est etudiant et non signe.</p>
+          <a data-download="windows">Telecharger</a>
+        </article>
+        <article class="card">
+          <div class="os">LIN</div>
+          <h3>Linux</h3>
+          <p>Build x86_64 livre dans une archive ZIP. Lancement en ligne de commande.</p>
+          <a data-download="linux">Telecharger</a>
+        </article>
+        <article class="card">
+          <div class="os">MAC</div>
+          <h3>macOS</h3>
+          <p>Le build macOS est en preparation. Cette carte sera activee a sa sortie.</p>
+          <a data-download="macos">Bientot disponible</a>
+        </article>
       </div>
     </section>
 
     <section class="split">
-      <article class="glass"><div class="section-title"><span>02</span><h2>Installation rapide</h2></div><ol><li>Téléchargez la version adaptée à votre système.</li><li>Extrayez l'archive dans un dossier.</li><li>Lancez l'exécutable du jeu.</li></ol></article>
-      <article class="glass"><div class="section-title"><span>03</span><h2>Fonctionnalités</h2></div><div class="tags"><span>Jeu local</span><span>Jeu en ligne</span><span>Amis</span><span>Matchmaking</span><span>Quixo</span><span>Qomet</span></div></article>
+      <article class="glass">
+        <div class="section-title"><span>02</span><h2>Installation Windows</h2></div>
+        <ol>
+          <li>Telecharger <code>BuildWindows.zip</code>.</li>
+          <li>Faire un clic droit sur le ZIP puis <code>Extraire tout</code>.</li>
+          <li>Ouvrir le dossier extrait.</li>
+          <li>Double-cliquer sur le fichier <code>.exe</code>.</li>
+        </ol>
+        <p class="note">Windows peut afficher SmartScreen ou Smart App Control au premier lancement. C'est normal pour un build etudiant non signe : choisir <code>Informations complementaires</code> puis <code>Executer quand meme</code>. Aucune desactivation de l'antivirus n'est demandee.</p>
+      </article>
+
+      <article class="glass">
+        <div class="section-title"><span>03</span><h2>Installation Linux</h2></div>
+        <ol>
+          <li>Telecharger <code>BuildLinux.zip</code>.</li>
+          <li>Extraire le ZIP.</li>
+          <li>Ouvrir un terminal dans le dossier extrait.</li>
+          <li>Lancer les commandes ci-dessous.</li>
+        </ol>
+<pre><code>chmod +x QuixoQomet.x86_64
+./QuixoQomet.x86_64</code></pre>
+        <p>Si le nom du fichier varie :</p>
+<pre><code>chmod +x *.x86_64
+./*.x86_64</code></pre>
+        <p class="note">Garder dans le meme dossier : le fichier <code>.x86_64</code>, le dossier <code>_Data</code> et <code>UnityPlayer.so</code>. Sinon le jeu ne demarre pas.</p>
+      </article>
     </section>
 
-    <section class="split practical">
-      <article class="glass"><div class="section-title"><span>04</span><h2>Installation Linux</h2></div><p>Après extraction du ZIP, ouvrir un terminal dans le dossier puis lancer :</p><pre><code>chmod +x QuixoQomet.x86_64
-./QuixoQomet.x86_64</code></pre><p>Si le nom du fichier varie :</p><pre><code>chmod +x *.x86_64
-./*.x86_64</code></pre></article>
-      <article class="glass help"><div class="section-title"><span>05</span><h2>Besoin d'aide ?</h2></div><p>En cas de problème urgent avec l'installation ou le lancement du jeu, contacter le développeur :</p><a href="mailto:lm_bouzekri@gmail.com">lm_bouzekri@gmail.com</a></article>
+    <section class="split">
+      <article class="glass">
+        <div class="section-title"><span>04</span><h2>macOS</h2></div>
+        <p>La version macOS n'est pas encore disponible. Le bouton <code>Bientot disponible</code> reste desactive tant que l'archive n'est pas publiee.</p>
+        <p class="note">Sur macOS, un build non signe peut demander un clic droit sur l'application puis <code>Ouvrir</code> au premier lancement.</p>
+      </article>
+
+      <article class="glass">
+        <div class="section-title"><span>05</span><h2>Premier lancement</h2></div>
+        <ol>
+          <li>Sur l'ecran d'authentification : <code>Inscription</code> puis email, username et mot de passe.</li>
+          <li>Ouvrir le mail recu et cliquer sur le lien de confirmation.</li>
+          <li>Revenir dans le jeu et se connecter avec email ou username.</li>
+          <li>Mot de passe oublie : saisir l'email puis cliquer sur <code>Mot de passe oublie</code>.</li>
+        </ol>
+      </article>
     </section>
 
-    <section class="authors"><div class="section-title"><span>06</span><h2>Auteurs</h2></div><p>BOUZEKRI Mohamed · MEHDI Kirouche · ABEL Filiciaggi · LIGH Douang</p></section>
+    <section class="split">
+      <article class="glass help">
+        <div class="section-title"><span>06</span><h2>Besoin d'aide ?</h2></div>
+        <p>En cas de probleme urgent avec l'installation ou le lancement du jeu, contacter le developpeur :</p>
+        <a href="mailto:lm_bouzekri@gmail.com">lm_bouzekri@gmail.com</a>
+      </article>
+
+      <article class="glass">
+        <div class="section-title"><span>07</span><h2>Auteurs</h2></div>
+        <ul class="authors-list">
+          <li>Mohamed Bouzekri</li>
+          <li>Mehdi Kerrouche</li>
+          <li>Abel Feliciagui</li>
+          <li>Hoang Linh Doan</li>
+        </ul>
+      </article>
+    </section>
   </main>
-  <footer>Projet étudiant Quixo / Qomet</footer>
+
+  <footer>Projet etudiant Quixo / Qomet</footer>
   <script src="app.js"></script>
 </body>
 </html>

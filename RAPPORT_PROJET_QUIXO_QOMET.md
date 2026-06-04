@@ -1,306 +1,601 @@
 # Rapport du projet Quixo / Qomet
 
-## Mode d'emploi et telechargement
+**Auteurs :** Mohamed Bouzekri, Mehdi Kerrouche, Abel Feliciagui, Hoang Linh Doan.
 
-**Auteurs :** BOUZEKRI Mohamed, MEHDI Kirouche, ABEL Filiciaggi et LIGH Douang.
+## Mode d'emploi et installation
 
-Le jeu peut etre telecharge depuis la page
-https://bouzekrimohamed.github.io/quixocomet/download/. Elle propose les builds
-Windows et Linux. La version macOS est indiquee comme bientot disponible.
+Cette section explique comment recuperer le jeu, l'installer et le lancer. Elle
+sert aussi de petit guide d'utilisation pour quelqu'un qui veut tester
+rapidement le projet.
 
-Sous Windows, il faut telecharger le ZIP, l'extraire puis lancer le fichier
-`.exe`. Windows peut afficher un avertissement, car ce build etudiant n'est pas
-signe. Sous Linux, il faut extraire le telechargement puis lancer :
+### Telecharger le jeu
+
+La page de telechargement officielle se trouve ici :
+
+https://bouzekrimohamed.github.io/quixocomet/download/
+
+Elle propose les builds Windows et Linux dans la release GitHub `v1.0.0`. La
+version macOS est indiquee comme "bientot disponible".
+
+### Installation Windows
+
+1. Telecharger `BuildWindows.zip`.
+2. Extraire le ZIP dans un dossier.
+3. Ouvrir le dossier et double-cliquer sur le fichier `.exe`.
+
+Windows peut afficher un avertissement SmartScreen ou Smart App Control. C'est
+le comportement normal d'un build etudiant non signe : il faut choisir
+`Informations complementaires` puis `Executer quand meme`. Aucune
+desactivation de l'antivirus ou de la securite Windows n'est demandee.
+
+### Installation Linux
+
+1. Telecharger `BuildLinux.zip`.
+2. Extraire le ZIP.
+3. Ouvrir un terminal dans le dossier extrait.
+4. Lancer :
 
 ```bash
 chmod +x QuixoQomet.x86_64
 ./QuixoQomet.x86_64
 ```
 
-Si le nom varie, les commandes `chmod +x *.x86_64` puis `./*.x86_64`
-permettent de lancer le build.
+Si le nom de l'executable varie :
 
-Pour creer un compte, ouvrir l'onglet d'inscription, saisir un email, un
-username et un mot de passe, puis confirmer l'adresse avec le lien recu par
-email. La connexion est refusee tant que l'email n'est pas confirme. Une fois
-le lien valide, Supabase redirige vers
-https://bouzekrimohamed.github.io/quixocomet/email-confirmed/. La connexion est
-ensuite possible avec l'email ou le username.
+```bash
+chmod +x *.x86_64
+./*.x86_64
+```
 
-Pour une partie locale, suivre `Jouer > Jouer en local`, puis choisir Quixo ou
-Qomet. Ce parcours fonctionne aussi en mode invite. Pour une partie en ligne,
-il faut etre connecte, suivre `Jouer > Jouer en ligne`, puis choisir le
-matchmaking Quixo ou Qomet. Il est aussi possible d'ouvrir `Amis` et d'inviter
-directement un joueur.
+Il faut garder le fichier `.x86_64`, le dossier `_Data` et `UnityPlayer.so`
+dans le meme dossier. Si l'un de ces elements manque, le jeu ne demarre pas.
 
-Dans le menu Amis, saisir le username recherche puis envoyer une demande. Le
-destinataire peut l'accepter ou la refuser. Une invitation de partie acceptee
-ne lance jamais le jeu toute seule : le joueur choisit quand la rejoindre.
+### macOS
 
-En cas d'oubli du mot de passe, saisir l'adresse email sur l'ecran de connexion
-et utiliser `Mot de passe oublie`. Le lien recu ouvre la page de
-reinitialisation du projet.
+La version macOS est en preparation. Sur macOS, un build non signe peut demander
+un clic droit > `Ouvrir` plutot qu'un double-clic au premier lancement.
 
-Quand une partie Quixo ou Qomet se termine, une fenetre affiche le gagnant et
-propose un retour au menu. Le bouton Rejouer est disponible en local et masque
-en ligne pour ne pas casser la synchronisation.
+### Creation de compte et confirmation email
 
-En cas de probleme urgent avec l'installation ou le lancement, le contact
-developpeur est [lm_bouzekri@gmail.com](mailto:lm_bouzekri@gmail.com).
+Pour creer un compte :
+
+1. Ouvrir l'onglet `Inscription` dans l'ecran d'authentification.
+2. Saisir un email, un username et un mot de passe.
+3. Valider l'inscription.
+4. Ouvrir le mail de confirmation envoye par Supabase.
+5. Cliquer sur le lien. Supabase redirige vers la page
+   https://bouzekrimohamed.github.io/quixocomet/email-confirmed/.
+
+Tant que l'email n'est pas confirme, la connexion echoue avec un message clair
+dans l'ecran d'authentification. Une fois l'email confirme, la connexion est
+possible avec l'email ou avec le username.
+
+### Mot de passe oublie
+
+Depuis l'ecran de connexion, saisir l'adresse email puis cliquer sur
+`Mot de passe oublie`. Supabase envoie un mail avec un lien qui ouvre la page
+https://bouzekrimohamed.github.io/quixocomet/reset-password/. La page permet
+de choisir un nouveau mot de passe puis de revenir se connecter dans le jeu.
+
+### Jouer en local
+
+Depuis le menu principal, choisir `Jouer`, puis le mode local et Quixo ou
+Qomet. Le mode local fonctionne aussi en mode invite, sans compte connecte.
+
+### Jouer en ligne
+
+Il faut etre connecte. Depuis le menu principal, choisir `Jouer`, puis le mode
+en ligne et Quixo ou Qomet. Le matchmaking cherche un autre joueur en attente
+sur le meme jeu.
+
+Il est aussi possible d'inviter directement un ami depuis le panneau `Amis`.
+
+### Amis
+
+Dans le panneau `Amis`, saisir le username recherche puis envoyer une demande.
+Le destinataire peut accepter ou refuser. Une fois la relation acceptee, les
+deux comptes voient le statut en ligne ou hors ligne, et peuvent s'envoyer une
+invitation de partie. Une invitation acceptee ne lance jamais la partie toute
+seule : le joueur clique sur `Rejoindre` quand il veut entrer.
+
+### Contact
+
+En cas de probleme urgent avec l'installation ou le lancement :
+[lm_bouzekri@gmail.com](mailto:lm_bouzekri@gmail.com).
 
 ## 1. Introduction
 
-Ce projet est une application de jeu réalisée avec Unity. Elle regroupe deux jeux abstraits : Quixo et Qomet. L'objectif principal était d'obtenir une version jouable, présentable et suffisamment complète pour montrer à la fois la partie gameplay, l'interface et une première couche de jeu en ligne.
+Ce projet est une application de jeu realisee avec Unity. Elle regroupe deux
+jeux de plateau : Quixo et Qomet. L'objectif etait d'obtenir une version
+jouable et presentable, avec un parcours utilisateur complet, et une premiere
+couche de jeu en ligne.
 
-Le projet permet de jouer localement à Quixo et à Qomet. Il ajoute aussi une partie connectée avec Supabase : création de compte, connexion, profils, amis, présence en ligne, invitations et matchmaking. L'ensemble reste volontairement simple côté serveur, car Unity communique directement avec Supabase via des requêtes REST.
+Le projet permet de jouer en local a Quixo et a Qomet. Il ajoute une partie
+connectee avec Supabase : creation de compte, connexion, profils, amis,
+presence en ligne, invitations et matchmaking. Unity communique directement
+avec Supabase en REST, sans serveur dedie.
 
-Le résultat est une base de jeu complète pour une première version : les deux jeux sont séparés dans leur logique, l'utilisateur peut se connecter ou continuer hors ligne, et les parties en ligne peuvent être synchronisées entre deux comptes.
+Le resultat est une base de jeu coherente : les deux jeux ont chacun leurs
+regles, l'utilisateur peut se connecter ou jouer hors ligne, et deux comptes
+peuvent jouer une partie en ligne ensemble.
 
 ## 2. Objectifs du projet
 
-Le premier objectif était de proposer une interface jouable dans Unity. Le projet ne devait pas seulement contenir les règles des jeux, mais aussi un vrai parcours utilisateur : une scène d'introduction, une scène d'authentification, un menu, un affichage du plateau, un HUD et des boutons adaptés aux différents modes.
+Le premier objectif etait de proposer un vrai parcours utilisateur dans Unity,
+pas seulement les regles des jeux. Le projet contient donc une scene d'intro,
+une scene d'authentification, un menu, une scene de jeu, un HUD et plusieurs
+boutons adaptes aux modes local et en ligne.
 
-Le deuxième objectif était d'intégrer deux jeux dans une même base Unity. Quixo et Qomet utilisent tous les deux un plateau et deux joueurs, mais leurs règles sont différentes. Il fallait donc garder une structure commune pour l'affichage et le déroulement de partie, tout en séparant clairement la logique de chaque jeu.
+Le deuxieme objectif etait d'integrer Quixo et Qomet dans une meme base Unity.
+Les deux jeux utilisent un plateau et deux joueurs, mais leurs regles sont
+differentes. Il fallait donc partager le rendu et le deroulement de partie,
+tout en separant clairement la logique de chaque jeu.
 
-Le troisième objectif était d'ajouter une couche compte et social. Un joueur peut créer un compte avec un email, un mot de passe et un username. Il peut ensuite se connecter avec son email ou son username, ajouter des amis, répondre à des demandes et inviter un ami à jouer.
+Le troisieme objectif etait d'ajouter une couche compte et social. Un joueur
+peut creer un compte, se connecter avec son email ou son username, ajouter des
+amis et accepter ou refuser une demande recue.
 
-Le quatrième objectif était de permettre le jeu en ligne. Deux chemins ont été prévus : l'invitation entre amis et le matchmaking aléatoire. Dans les deux cas, le match et les coups joués sont stockés dans Supabase, puis relus par polling depuis Unity.
+Le quatrieme objectif etait de permettre le jeu en ligne. Deux chemins ont ete
+prevus : l'invitation entre amis et le matchmaking aleatoire. Dans les deux
+cas, le match et les coups joues sont stockes dans Supabase, puis relus par
+polling depuis Unity.
 
-Enfin, le projet devait rendre Qomet vraiment différent de Quixo. Qomet n'est pas seulement une variante graphique : il repose sur un graphe de 25 nœuds, des connexions, des réserves d'étoiles, des déplacements, des poussées et une condition de victoire par carré.
+Enfin, Qomet devait rester un vrai jeu different de Quixo. Qomet n'est pas une
+simple variante visuelle de Quixo : il repose sur un graphe de 25 noeuds, des
+connexions, des reserves d'etoiles, des deplacements, des poussees et une
+condition de victoire par carre.
 
-## 3. Technologies utilisées
+## 3. Technologies utilisees
 
-Unity est utilisé comme moteur principal du jeu. Il gère les scènes, l'interface, les interactions avec le plateau, les boutons, l'affichage des pions et le build Windows.
+Unity est utilise comme moteur du jeu. Il gere les scenes, l'interface, les
+interactions avec le plateau, les boutons, l'affichage des pions et les builds
+Windows et Linux.
 
-C# est utilisé pour les scripts de gameplay, les services, l'interface et la communication avec Supabase. Les règles de Quixo et de Qomet sont codées côté Unity, de même que les contrôleurs de menu, d'authentification et de partie.
+C# est utilise pour tout le code cote Unity : les regles de Quixo et de Qomet,
+les controleurs de menu, d'authentification et de partie, et les services qui
+parlent a Supabase.
 
-Supabase Auth sert à gérer l'inscription, la connexion, les sessions utilisateur et la réinitialisation du mot de passe. Les mots de passe ne sont pas stockés dans une table du projet : ils restent gérés par Supabase Auth.
+Supabase Auth sert a gerer l'inscription, la connexion, les sessions et la
+reinitialisation du mot de passe. Les mots de passe ne sont pas stockes dans
+une table du projet : ils restent geres par Supabase Auth.
 
-Supabase PostgreSQL sert à stocker les données publiques ou liées au jeu : profils, relations d'amitié, présence, invitations, file de matchmaking, matchs et coups joués.
+Supabase PostgreSQL sert a stocker les donnees liees au jeu : profils,
+relations d'amitie, presence, invitations, file de matchmaking, matchs et
+coups joues.
 
-Supabase REST permet à Unity de communiquer avec la base sans serveur dédié. Les scripts utilisent `UnityWebRequest` pour envoyer des requêtes HTTP vers l'API Supabase.
+Supabase REST permet a Unity de communiquer avec la base sans serveur dedie.
+Les scripts utilisent `UnityWebRequest` pour envoyer des requetes HTTP vers
+l'API Supabase.
 
-GitHub Pages est utilisé pour héberger la page de réinitialisation du mot de passe, la page de confirmation email et la page de téléchargement. La page de reset reçoit les tokens envoyés par Supabase et permet à l'utilisateur de choisir un nouveau mot de passe.
+GitHub Pages heberge trois pages statiques : la page de telechargement, la
+page de confirmation email et la page de reinitialisation du mot de passe. La
+page de reset recoit les tokens envoyes par Supabase et permet a l'utilisateur
+de choisir un nouveau mot de passe.
 
-Git et GitHub servent au versionnement et au partage du projet. Le projet contient aussi des fichiers de configuration et des guides pour ouvrir Unity, configurer Supabase et préparer un build Windows.
+Git et GitHub servent au versionnement et au partage du projet. Le depot
+contient aussi les fichiers de configuration et les guides pour ouvrir Unity,
+configurer Supabase et faire les builds.
 
-## 4. Organisation générale du projet
+## 4. Organisation generale du projet
 
-Le code Unity est organisé en dossiers simples, chacun avec un rôle assez clair.
+Le code Unity est range dans des dossiers simples.
 
-Le dossier `Auth` contient la connexion, l'inscription, la session utilisateur, le stockage des tokens et les requêtes authentifiées vers Supabase. On y trouve notamment `AuthService`, `SessionManager` et `SupabaseRequestHelper`.
+Le dossier `Auth` contient la connexion, l'inscription, la session utilisateur,
+le stockage des tokens et les requetes authentifiees vers Supabase. On y trouve
+notamment `AuthService`, `SessionManager` et `SupabaseRequestHelper`.
 
-Le dossier `Social` contient la gestion des amis. Il permet de chercher un profil par username, d'envoyer une demande, de l'accepter ou de la refuser, puis de charger la liste des amis acceptés.
+Le dossier `Social` contient la gestion des amis. Il permet de chercher un
+profil par username, d'envoyer une demande, de l'accepter ou de la refuser,
+puis de charger la liste des amis acceptes.
 
-Le dossier `Online` contient la présence, les invitations de match, le matchmaking et la synchronisation des coups. Cette partie repose sur des tables Supabase et sur du polling depuis Unity.
+Le dossier `Online` contient la presence, les invitations de match, le
+matchmaking et la synchronisation des coups. Cette partie repose sur des
+tables Supabase et sur du polling depuis Unity.
 
-Le dossier `Gameplay` contient le déroulement d'une partie. `GameFlowController` choisit les règles selon le jeu, gère les clics sur le plateau, applique les coups, met à jour le HUD et bloque les actions quand le joueur n'a pas la main en ligne.
+Le dossier `Gameplay` contient le deroulement d'une partie. `GameFlowController`
+choisit les regles selon le jeu, gere les clics sur le plateau, applique les
+coups, met a jour le HUD et bloque les actions quand le joueur n'a pas la main
+en ligne.
 
-Le dossier `Core` contient les règles et les structures de base : état du plateau, joueur courant, directions de mouvement, logique Quixo, graphe Qomet et règles Qomet.
+Le dossier `Core` contient les regles et les structures de base : etat du
+plateau, joueur courant, directions de mouvement, logique Quixo, graphe Qomet
+et regles Qomet.
 
-Le dossier `UI` contient les vues : authentification, menu, amis, HUD, rendu du plateau, thèmes visuels, splash et intro vidéo.
+Le dossier `UI` contient les vues : authentification, menu, amis, HUD, rendu
+du plateau, themes visuels, splash et intro video.
 
-Enfin, `Editor / QuixoSceneBuilder` sert à créer ou réparer les scènes Unity. Il prépare notamment les scènes `IntroVideoScene`, `SplashScene`, `AuthScene`, `MenuScene` et `GameplayScene`, puis les ajoute aux Build Settings.
+Enfin, `Editor / QuixoSceneBuilder` sert a creer ou reparer les scenes Unity.
+Il prepare notamment `IntroVideoScene`, `SplashScene`, `AuthScene`,
+`MenuScene` et `GameplayScene`, puis les ajoute aux Build Settings.
 
-Cette organisation reste simple. Elle ne cherche pas à imiter une grosse architecture serveur, mais elle permet de séparer les responsabilités principales du projet.
+Cette organisation reste volontairement simple. Elle separe les
+responsabilites principales sans chercher a imiter une grosse architecture
+serveur.
 
 ## 5. Authentification et gestion des comptes
 
-L'authentification repose sur Supabase Auth. L'utilisateur peut s'inscrire avec un email, un mot de passe et un username. Après l'inscription, le projet crée ou met à jour un profil dans la table `profiles`, avec l'identifiant Supabase de l'utilisateur, son username, son display name et son email.
+L'authentification utilise Supabase Auth. L'utilisateur peut s'inscrire avec
+un email, un mot de passe et un username. Apres l'inscription, le projet cree
+ou met a jour un profil dans la table `profiles`, avec l'identifiant Supabase
+de l'utilisateur, son username, son display name et son email.
 
-La connexion accepte deux formats. Si l'identifiant contient un `@`, il est traité comme un email et envoyé directement à Supabase Auth. Sinon, Unity cherche d'abord dans `profiles` l'email correspondant au username, puis utilise cet email pour la connexion Supabase.
+La connexion accepte deux formats. Si l'identifiant contient un `@`, il est
+traite comme un email et envoye directement a Supabase Auth. Sinon, Unity
+cherche d'abord dans `profiles` l'email correspondant au username, puis utilise
+cet email pour la connexion Supabase.
 
-Le mot de passe oublié passe par l'endpoint Supabase `recover`. Unity envoie l'email et une URL de redirection vers la page GitHub Pages du projet. Cette page statique utilise Supabase JS pour appliquer le nouveau mot de passe avec les tokens fournis dans le lien.
+Le mot de passe oublie passe par l'endpoint Supabase `recover`. Unity envoie
+l'email et une URL de redirection vers la page GitHub Pages du projet. Cette
+page statique utilise Supabase JS pour appliquer le nouveau mot de passe avec
+les tokens fournis dans le lien.
 
-La confirmation email est obligatoire. La requête d'inscription indique la page `email-confirmed` comme redirection et Unity refuse proprement la connexion tant que Supabase ne renvoie pas un email confirmé.
+La confirmation email est obligatoire. La requete d'inscription indique la
+page `email-confirmed` comme redirection et Unity refuse la connexion tant
+que Supabase ne renvoie pas un email confirme.
 
-Les sessions sont stockées côté Unity avec `PlayerPrefs`. Le projet conserve l'access token, le refresh token, l'id utilisateur, l'email et le username. Quand une requête authentifiée échoue à cause d'un JWT expiré ou invalide, `SupabaseRequestHelper` tente de rafraîchir la session avec le refresh token, puis relance la requête.
+Les sessions sont stockees cote Unity avec `PlayerPrefs`. Le projet conserve
+l'access token, le refresh token, l'id utilisateur, l'email et le username.
+Quand une requete authentifiee echoue a cause d'un JWT expire ou invalide,
+`SupabaseRequestHelper` tente de rafraichir la session avec le refresh token,
+puis relance la requete.
 
-Le projet fait attention à ne pas utiliser de clé `service_role` dans Unity. Unity utilise uniquement l'URL du projet Supabase et la clé anon/publishable. Les droits d'accès sont donc gérés par les policies RLS côté Supabase.
+Le projet n'utilise jamais la cle `service_role` dans Unity. Unity utilise
+uniquement l'URL du projet Supabase et la cle anon / publishable. Les droits
+d'acces sont geres par les policies RLS cote Supabase.
 
-Un mode hors ligne existe aussi. Si Supabase n'est pas configuré, ou si l'utilisateur ne veut pas se connecter, il peut continuer comme invité. Dans ce cas, les fonctions sociales et en ligne ne sont pas disponibles, mais les modes locaux restent utilisables.
+Un mode hors ligne existe aussi. Si Supabase n'est pas configure, ou si
+l'utilisateur ne veut pas se connecter, il peut continuer comme invite. Dans
+ce cas, les fonctions sociales et en ligne ne sont pas disponibles, mais les
+modes locaux restent utilisables.
 
-## 6. Système d'amis
+## 6. Systeme d'amis
 
-Le système d'amis utilise la table `friends`. Pour ajouter un joueur, l'utilisateur saisit un username. Unity normalise ce username en minuscules, avec uniquement des lettres, des chiffres et des underscores, puis cherche le profil correspondant dans `profiles`.
+Le systeme d'amis utilise la table `friends`. Pour ajouter un joueur,
+l'utilisateur saisit un username. Unity normalise ce username en minuscules,
+avec uniquement des lettres, des chiffres et des underscores, puis cherche le
+profil correspondant dans `profiles`.
 
-Avant d'envoyer une demande, le service vérifie qu'il ne s'agit pas de l'utilisateur courant et qu'une relation n'existe pas déjà entre les deux joueurs. Si tout est correct, une ligne est créée dans `friends` avec le statut `pending`.
+Avant d'envoyer une demande, le service verifie qu'il ne s'agit pas de
+l'utilisateur courant et qu'une relation n'existe pas deja entre les deux
+joueurs. Si tout est correct, une ligne est creee dans `friends` avec le
+statut `pending`.
 
-Le joueur qui reçoit la demande peut l'accepter ou la refuser. L'acceptation met le statut à `accepted`, le refus met le statut à `rejected`. La liste des amis affichée dans l'interface ne reprend que les relations acceptées.
+Le joueur qui recoit la demande peut l'accepter ou la refuser. L'acceptation
+met le statut a `accepted`, le refus le met a `rejected`. La liste des amis
+affichee dans l'interface ne reprend que les relations acceptees.
 
-Le panneau d'amis affiche aussi les demandes reçues, les amis acceptés et les invitations de partie. Depuis la ligne d'un ami, il est possible d'envoyer une invitation pour Quixo ou pour Qomet.
+Le panneau d'amis affiche aussi les demandes recues, les amis acceptes et les
+invitations de partie. Depuis la ligne d'un ami, il est possible d'envoyer une
+invitation pour Quixo ou pour Qomet.
 
-Les erreurs Supabase sont converties en messages plus lisibles côté UI. Par exemple, une clé dupliquée peut devenir un message du type "Vous êtes déjà amis ou une demande existe déjà", et une erreur RLS est affichée comme un problème d'autorisation ou de policies.
+Les erreurs Supabase sont converties en messages plus lisibles cote UI. Une
+cle dupliquee devient par exemple un message du type "Vous etes deja amis ou
+une demande existe deja", et une erreur RLS est affichee comme un probleme
+d'autorisation ou de policies.
 
-## 7. Présence online/offline
+## 7. Presence en ligne et hors ligne
 
-La présence en ligne est gérée avec la table `user_presence`. Quand un utilisateur connecté est actif, Unity envoie régulièrement un heartbeat. Ce heartbeat met à jour le statut, le username et surtout `last_seen_at`.
+La presence en ligne est geree avec la table `user_presence`. Quand un
+utilisateur connecte est actif, Unity envoie un heartbeat regulier qui met a
+jour le statut, le username et surtout `last_seen_at`.
 
-L'affichage des amis utilise ensuite cette information pour déterminer si un ami est en ligne. Dans le code, un utilisateur est considéré online si son statut est `online` et si son `last_seen_at` est assez récent. L'interface peut alors afficher une pastille verte ou rouge.
+L'affichage des amis utilise ensuite cette information pour determiner si un
+ami est en ligne. Un utilisateur est considere online si son statut est
+`online` et si son `last_seen_at` est assez recent. L'interface peut alors
+afficher un statut visible.
 
-Cette approche est simple et adaptée à une V1. Elle a toutefois une limite normale : si l'application se ferme brutalement, Unity ne peut pas forcément envoyer un statut `offline`. Le joueur peut donc rester affiché en ligne quelques secondes, jusqu'à ce que son dernier heartbeat soit considéré trop ancien.
+L'approche est simple, adaptee a une V1. Limite normale : si l'application se
+ferme brutalement, Unity ne peut pas forcement envoyer un statut `offline`.
+Le joueur peut donc rester affiche en ligne quelques secondes, jusqu'a ce que
+son dernier heartbeat soit considere trop ancien.
 
 ## 8. Multijoueur en ligne
 
-Le multijoueur en ligne propose deux façons de démarrer une partie.
+Le multijoueur en ligne propose deux facons de demarrer une partie.
 
-La première est l'invitation entre amis. Un joueur envoie une invitation à un ami pour Quixo ou Qomet. L'invitation est stockée dans `match_invites` avec le statut `pending`. Quand le destinataire accepte, Unity crée un match dans `online_matches`, met l'invitation à `accepted` et associe le `match_id`.
+La premiere est l'invitation entre amis. Un joueur envoie une invitation a un
+ami pour Quixo ou Qomet. L'invitation est stockee dans `match_invites` avec le
+statut `pending`. Quand le destinataire accepte, Unity cree un match dans
+`online_matches`, met l'invitation a `accepted` et associe le `match_id`.
 
-La deuxième est le matchmaking aléatoire. Quand un joueur cherche une partie, Unity crée ou remet à zéro sa ligne dans `matchmaking_queue`. Le client cherche ensuite un autre joueur en attente pour le même jeu. Si un adversaire est trouvé, un match est créé et les deux lignes de queue sont marquées comme `matched`.
+La deuxieme est le matchmaking aleatoire. Quand un joueur cherche une partie,
+Unity cree ou remet a zero sa ligne dans `matchmaking_queue`. Le client cherche
+ensuite un autre joueur en attente pour le meme jeu. Si un adversaire est
+trouve, un match est cree et les deux lignes de queue passent en `matched`.
 
-Les matchs sont stockés dans `online_matches`. Cette table contient le type de jeu, `player1_id`, `player2_id`, `current_turn_id`, le statut du match et éventuellement le gagnant. Le joueur `player1` commence toujours, car `current_turn_id` est initialisé avec `player1_id`.
+Les matchs sont stockes dans `online_matches`. La table contient le type de
+jeu, `player1_id`, `player2_id`, `current_turn_id`, le statut du match et
+eventuellement le gagnant. Le joueur `player1` commence toujours, car
+`current_turn_id` est initialise avec `player1_id`.
 
-Les coups joués sont stockés dans `online_moves`. Chaque coup contient un numéro, le joueur qui l'a envoyé et un payload JSON. Pour Quixo, le payload contient notamment la case sélectionnée et la direction. Pour Qomet, il distingue la pose d'une étoile et le déplacement d'une étoile entre deux nœuds.
+Les coups joues sont stockes dans `online_moves`. Chaque coup contient un
+numero, le joueur qui l'a envoye et un payload JSON. Pour Quixo, le payload
+contient la case selectionnee et la direction. Pour Qomet, il distingue la
+pose d'une etoile et le deplacement d'une etoile entre deux noeuds.
 
-La synchronisation se fait par polling. Pendant une partie en ligne, Unity récupère régulièrement les nouveaux coups et l'état du match. Le client local applique les coups adverses lorsqu'ils apparaissent dans `online_moves`.
+La synchronisation se fait par polling. Pendant une partie en ligne, Unity
+recupere regulierement les nouveaux coups et l'etat du match. Le client local
+applique les coups adverses lorsqu'ils apparaissent dans `online_moves`.
 
-Le mode online bloque les actions si ce n'est pas le tour du joueur. Le HUD indique si le joueur doit jouer ou attendre l'adversaire. Après un coup valide, Unity envoie le coup, met à jour le tour suivant et termine le match si un gagnant est détecté.
+Le mode en ligne bloque les actions si ce n'est pas le tour du joueur. Le HUD
+indique si le joueur doit jouer ou attendre l'adversaire. Apres un coup
+valide, Unity envoie le coup, met a jour le tour suivant et termine le match
+si un gagnant est detecte.
 
-Le matchmaking contient quelques protections utiles. Les lignes de queue trop anciennes sont ignorées pour éviter de matcher un joueur avec une ancienne session fermée. Le projet annule aussi les anciennes queues du joueur avant une nouvelle recherche, et un tie-break déterministe évite que deux joueurs créent chacun un match séparé.
+Le matchmaking contient quelques protections utiles. Les lignes de queue trop
+anciennes sont ignorees pour eviter de matcher un joueur avec une ancienne
+session fermee. Le projet annule aussi les anciennes queues du joueur avant
+une nouvelle recherche, et un tie-break deterministe evite que deux joueurs
+creent chacun un match separe.
 
 ### Limite de la V1 online
 
-La version actuelle est principalement client-authoritative. Cela signifie que Unity valide les coups côté client, puis envoie le résultat à Supabase.
+La version actuelle est principalement client-authoritative. Unity valide les
+coups cote client, puis envoie le resultat a Supabase.
 
-Supabase contrôle surtout l'identité de l'utilisateur, les droits d'accès avec RLS, le tour courant et l'état du match. Cette base est suffisante pour une première version étudiante, mais elle n'empêche pas complètement un client modifié d'envoyer un coup incorrect.
+Supabase controle surtout l'identite, les droits d'acces RLS, le tour courant
+et l'etat du match. Cette base est suffisante pour une premiere version, mais
+elle n'empeche pas completement un client modifie d'envoyer un coup incorrect.
 
-Une V2 plus solide pourrait utiliser des RPC SQL ou des Edge Functions pour valider les coups côté serveur. Elle pourrait aussi remplacer une partie du polling par Supabase Realtime.
+Une V2 plus solide pourrait utiliser des RPC SQL ou des Edge Functions pour
+valider les coups cote serveur. Elle pourrait aussi remplacer une partie du
+polling par Supabase Realtime.
 
 ## 9. Mode Quixo
 
-Quixo est joué sur un plateau 5x5. Le joueur sélectionne un cube du bord qui est neutre ou qui lui appartient, puis choisit une direction d'insertion. Le déplacement pousse la ligne ou la colonne correspondante et place le symbole du joueur à l'autre extrémité.
+Quixo se joue sur un plateau 5x5. Le joueur selectionne un cube du bord qui
+est neutre ou qui lui appartient, puis choisit une direction d'insertion. Le
+deplacement pousse la ligne ou la colonne correspondante et place le symbole
+du joueur a l'autre extremite.
 
-Le projet affiche les marques des deux joueurs avec X et O. La victoire est détectée quand un joueur obtient une ligne, une colonne ou une diagonale complète. Comme dans les règles classiques, si le coup crée aussi une ligne gagnante pour l'adversaire, la vérification de l'adversaire est prioritaire.
+Le projet affiche les marques des deux joueurs avec X et O. La victoire est
+detectee quand un joueur obtient une ligne, une colonne ou une diagonale
+complete. Comme dans les regles classiques, si le coup cree aussi une ligne
+gagnante pour l'adversaire, la verification de l'adversaire est prioritaire.
 
-Techniquement, Quixo repose sur une logique de grille. Les cases sont indexées par ligne et colonne, et les directions possibles sont calculées à partir de la position du cube sélectionné.
+Techniquement, Quixo repose sur une logique de grille. Les cases sont indexees
+par ligne et colonne, et les directions possibles sont calculees a partir de
+la position du cube selectionne.
 
-Quixo est jouable en local et en ligne. En ligne, les informations nécessaires au coup sont envoyées dans le payload, puis rejouées sur le client adverse.
+Quixo est jouable en local et en ligne. En ligne, les informations
+necessaires au coup sont envoyees dans le payload, puis rejouees sur le client
+adverse.
 
 ## 10. Mode Qomet
 
-Qomet est une partie importante du projet, car ce n'est pas une simple variante visuelle de Quixo. Le plateau ne fonctionne pas comme une grille classique de 25 cases. Il est représenté par un graphe de 25 nœuds disposés dans une grille logique 7x7, avec seulement certaines positions valides.
+Qomet est une partie importante du projet, car ce n'est pas une variante
+visuelle de Quixo. Le plateau ne fonctionne pas comme une grille classique de
+25 cases : il est represente par un graphe de 25 noeuds disposes dans une
+grille logique 7x7, avec seulement certaines positions valides.
 
-La disposition visuelle correspond à une forme 3-3-3-7-3-3-3 : trois nœuds en haut, trois sur les lignes suivantes, sept au centre, puis à nouveau trois nœuds par ligne vers le bas. Les nœuds sont identifiés de A à Y et reliés par des connexions définies dans `QometGraph`.
+La disposition visuelle correspond a une forme 3-3-3-7-3-3-3 : trois noeuds en
+haut, trois sur les lignes suivantes, sept au centre, puis trois noeuds par
+ligne vers le bas. Les noeuds sont identifies de A a Y et relies par des
+connexions definies dans `QometGraph`.
 
-Chaque joueur possède une réserve de 7 étoiles. Le plateau est vide au départ. Tant qu'un joueur a des étoiles en réserve, il peut poser une étoile sur un nœud vide. Une fois la réserve vide, ou selon la situation de jeu, il peut sélectionner une étoile de sa couleur et la déplacer vers un nœud relié.
+Chaque joueur possede une reserve de 7 etoiles. Le plateau est vide au depart.
+Tant qu'un joueur a des etoiles en reserve, il peut poser une etoile sur un
+noeud vide. Une fois la reserve vide, ou selon la situation de jeu, il peut
+selectionner une etoile de sa couleur et la deplacer vers un noeud relie.
 
-Le déplacement se fait uniquement le long des connexions du graphe. Si le nœud d'arrivée est vide, l'étoile se déplace simplement. Si le nœud d'arrivée contient une étoile, une poussée peut être tentée dans la même direction.
+Le deplacement se fait uniquement le long des connexions du graphe. Si le
+noeud d'arrivee est vide, l'etoile s'y deplace simplement. Si le noeud
+d'arrivee contient une etoile, une poussee peut etre tentee dans la meme
+direction.
 
-La poussée ne déplace qu'une seule étoile. Si le nœud suivant dans la direction existe et est vide, l'étoile poussée y est déplacée. Si aucun nœud suivant n'existe, l'étoile sort du plateau et retourne dans la réserve de son propriétaire. Si une deuxième étoile bloque la ligne, la poussée est interdite.
+La poussee ne deplace qu'une seule etoile. Si le noeud suivant dans la
+direction existe et est vide, l'etoile poussee y est deplacee. Si aucun noeud
+suivant n'existe, l'etoile sort du plateau et retourne dans la reserve de son
+proprietaire. Si une deuxieme etoile bloque la ligne, la poussee est interdite.
 
-Le code interdit aussi le coup inverse immédiat. Cela évite qu'un joueur annule directement le déplacement précédent en revenant exactement de `to` vers `from`.
+Le code interdit aussi le coup inverse immediat. Cela evite qu'un joueur
+annule directement le deplacement precedent en revenant exactement de `to`
+vers `from`.
 
-La victoire se fait par formation d'un carré. Le projet utilise une liste de carrés gagnants pré-calculés, avec des quadruplets de nœuds. Cette solution évite de détecter de faux carrés à cause des positions visuelles ou des calculs flottants.
+La victoire se fait par formation d'un carre. Le projet utilise une liste de
+carres gagnants pre-calcules, avec des quadruplets de noeuds. Cette solution
+evite de detecter de faux carres a cause des positions visuelles ou des
+calculs flottants.
 
-Après un coup, Qomet vérifie d'abord si l'adversaire possède un carré. Si c'est le cas, l'adversaire gagne. Sinon, le jeu vérifie si le joueur qui vient de jouer a créé son propre carré. Cette priorité est importante, car une poussée peut produire une situation favorable à l'autre joueur.
+Apres un coup, Qomet verifie d'abord si l'adversaire possede un carre. Si
+c'est le cas, l'adversaire gagne. Sinon, le jeu verifie si le joueur qui vient
+de jouer a cree son propre carre. Cette priorite est importante, car une
+poussee peut produire une situation favorable a l'autre joueur.
 
-La différence technique avec Quixo est donc nette. Quixo utilise une grille 5x5 et des directions de poussée sur lignes ou colonnes. Qomet utilise un graphe de nœuds et de connexions, avec une réserve, des mouvements le long des arêtes et une victoire par carrés prédéfinis.
+La difference technique avec Quixo est donc nette. Quixo utilise une grille
+5x5 et des directions de poussee sur lignes ou colonnes. Qomet utilise un
+graphe de noeuds et de connexions, avec une reserve, des mouvements le long
+des aretes et une victoire par carres predefinis.
 
 ## 11. Interface utilisateur
 
-L'interface est organisée autour de plusieurs scènes.
+L'interface est organisee autour de plusieurs scenes.
 
-`AuthScene` sert à la connexion, l'inscription, le mot de passe oublié et le mode invité. Elle permet de continuer hors ligne si Supabase n'est pas configuré ou si l'utilisateur ne veut pas se connecter.
+`AuthScene` sert a la connexion, l'inscription, le mot de passe oublie et le
+mode invite. Elle permet de continuer hors ligne si Supabase n'est pas
+configure ou si l'utilisateur ne veut pas se connecter.
 
-`MenuScene` donne accès aux modes locaux, aux modes en ligne, au panneau d'amis, aux thèmes, à la déconnexion et à la sortie du jeu. Les boutons online et amis dépendent de l'état de session de l'utilisateur.
+`MenuScene` donne acces aux modes locaux, aux modes en ligne, au panneau
+d'amis, aux themes, a la deconnexion et a la sortie du jeu. Les boutons online
+et amis dependent de l'etat de session de l'utilisateur.
 
-`FriendsView` affiche les demandes d'amis, les amis acceptés, leur présence et les invitations de match. C'est aussi depuis cette vue qu'un joueur peut inviter un ami en Quixo ou en Qomet.
+`FriendsView` affiche les demandes d'amis, les amis acceptes, leur presence et
+les invitations de partie. C'est aussi depuis cette vue qu'un joueur peut
+inviter un ami en Quixo ou en Qomet. Une invitation acceptee n'entraine pas
+le lancement automatique d'une partie : le joueur choisit quand rejoindre.
 
-`GameplayScene` contient le plateau, le HUD, les messages de tour, les messages de victoire et les contrôles de jeu. Pour Quixo, le HUD affiche les directions possibles. Pour Qomet, l'interaction se fait davantage par sélection de nœuds reliés.
+`GameplayScene` contient le plateau, le HUD, les messages de tour, la popup de
+fin de partie et les controles de jeu. Pour Quixo, le HUD affiche les
+directions possibles. Pour Qomet, l'interaction se fait davantage par
+selection de noeuds relies.
 
-Le projet contient aussi une intro vidéo et un splash de secours. Si la vidéo est disponible, elle est jouée au démarrage ; sinon, le projet peut passer au flux suivant avec un affichage fallback.
+Le projet contient aussi une intro video et un splash de secours. Si la video
+est disponible, elle est jouee au demarrage. Sinon, le projet passe au flux
+suivant avec un affichage fallback.
 
-## 12. Base de données Supabase
+## 12. Base de donnees Supabase
 
-La table `profiles` contient les informations publiques du joueur : id, username, display name, email et date de création. Elle sert au login par username et à l'affichage des amis.
+La table `profiles` contient les informations publiques du joueur : id,
+username, display name, email et date de creation. Elle sert au login par
+username et a l'affichage des amis.
 
-La table `friends` contient les relations entre deux profils. Elle stocke le demandeur, le receveur et le statut de la relation : `pending`, `accepted`, `rejected` ou `blocked`.
+La table `friends` contient les relations entre deux profils. Elle stocke le
+demandeur, le receveur et le statut : `pending`, `accepted`, `rejected` ou
+`blocked`.
 
-La table `user_presence` contient la présence en ligne. Elle stocke l'utilisateur, son username, son statut et `last_seen_at`, utilisé pour savoir si le joueur est encore considéré connecté.
+La table `user_presence` contient la presence en ligne. Elle stocke
+l'utilisateur, son username, son statut et `last_seen_at`, utilise pour savoir
+si le joueur est encore considere connecte.
 
-La table `match_invites` contient les invitations entre amis. Elle indique l'expéditeur, le destinataire, le jeu choisi, le statut de l'invitation et éventuellement le match créé après acceptation.
+La table `match_invites` contient les invitations entre amis. Elle indique
+l'expediteur, le destinataire, le jeu choisi, le statut de l'invitation et
+eventuellement le match cree apres acceptation.
 
-La table `matchmaking_queue` sert à trouver un adversaire aléatoire. Une ligne indique qu'un joueur cherche une partie pour Quixo ou Qomet. Le code utilise `created_at` et `updated_at` pour départager les joueurs et ignorer les anciennes lignes.
+La table `matchmaking_queue` sert a trouver un adversaire aleatoire. Une ligne
+indique qu'un joueur cherche une partie pour Quixo ou Qomet. Le code utilise
+`created_at` et `updated_at` pour departager les joueurs et ignorer les
+anciennes lignes.
 
-La table `online_matches` représente une partie en ligne. Elle contient les deux joueurs, le joueur qui doit jouer, le statut du match et le gagnant si la partie est terminée.
+La table `online_matches` represente une partie en ligne. Elle contient les
+deux joueurs, le joueur qui doit jouer, le statut du match et le gagnant si
+la partie est terminee.
 
-La table `online_moves` contient les coups joués. Chaque coup est lié à un match, à un joueur, à un numéro de coup et à un payload JSON qui permet de rejouer l'action côté adverse.
+La table `online_moves` contient les coups joues. Chaque coup est lie a un
+match, a un joueur, a un numero de coup et a un payload JSON qui permet de
+rejouer l'action cote adverse.
 
-## 13. Sécurité et limites
+## 13. Securite et limites
 
-Le projet évite de mettre une clé `service_role` dans Unity. C'est un point important, car une application cliente ne doit pas contenir une clé capable de contourner les règles d'accès de la base.
+Le projet n'utilise pas de cle `service_role` dans Unity. C'est un point
+important, car une application cliente ne doit pas contenir une cle capable
+de contourner les regles d'acces de la base.
 
-Unity utilise la clé anon/publishable. Les accès sont donc limités par les policies RLS de Supabase. Les policies permettent par exemple à un utilisateur de gérer son propre profil, de voir ses relations d'amitié, de mettre à jour sa présence et d'insérer un coup seulement si Supabase voit qu'il est le joueur courant du match.
+Unity utilise la cle anon / publishable. Les acces sont donc limites par les
+policies RLS de Supabase. Les policies permettent par exemple a un utilisateur
+de gerer son propre profil, de voir ses relations d'amitie, de mettre a jour
+sa presence et d'inserer un coup seulement si Supabase voit qu'il est le
+joueur courant du match.
 
-Les sessions utilisent un access token et un refresh token. Quand l'access token expire, le projet tente de rafraîchir la session automatiquement. Si le refresh échoue, la session est nettoyée et l'utilisateur doit se reconnecter.
+Les sessions utilisent un access token et un refresh token. Quand l'access
+token expire, le projet tente de rafraichir la session automatiquement. Si le
+refresh echoue, la session est nettoyee et l'utilisateur doit se reconnecter.
 
-Les limites actuelles sont normales pour une première version. La validation serveur des coups n'est pas complète, car la logique de règles reste dans Unity. Le polling est utilisé à la place du realtime. Il n'y a pas encore de classement, de timer, d'historique complet de parties, de reconnexion avancée ou de système d'abandon propre.
+Les limites actuelles sont normales pour une premiere version. La validation
+serveur des coups n'est pas complete : la logique des regles reste dans Unity.
+Le polling est utilise a la place du realtime. Il n'y a pas encore de
+classement, de timer, d'historique complet de parties, de reconnexion avancee
+ni de systeme d'abandon dedie.
 
-Ces limites ne bloquent pas le rendu du projet, mais elles indiquent clairement les prochaines étapes si le jeu devait évoluer vers une version plus robuste.
+Ces limites ne bloquent pas le rendu du projet, mais elles indiquent les
+prochaines etapes si le jeu devait evoluer vers une version plus robuste.
 
 ## 14. Tests manuels
 
-Les tests manuels prévus pour valider le projet sont les suivants :
+Les tests manuels prevus pour valider le projet :
 
-- création de compte avec email, mot de passe et username ;
+- creation de compte avec email, mot de passe et username ;
 - connexion avec email ;
 - connexion avec username ;
 - refus propre d'une connexion avant confirmation email ;
-- page GitHub Pages `email-confirmed` après validation ;
-- mot de passe oublié et page GitHub Pages de reset ;
-- chargement du profil après connexion ;
+- page GitHub Pages `email-confirmed` apres validation ;
+- mot de passe oublie et page GitHub Pages de reset ;
+- chargement du profil apres connexion ;
 - ajout d'un ami par username ;
 - acceptation et refus d'une demande d'ami ;
-- affichage des amis acceptés ;
-- présence online/offline avec deux comptes ;
+- affichage des amis acceptes ;
+- presence online / offline avec deux comptes ;
 - invitation d'un ami en Quixo ;
 - invitation d'un ami en Qomet ;
-- matchmaking aléatoire Quixo ;
-- matchmaking aléatoire Qomet ;
+- matchmaking aleatoire Quixo ;
+- matchmaking aleatoire Qomet ;
 - partie Quixo locale ;
 - partie Qomet locale ;
-- partie online avec deux comptes ;
-- vérification dans Unity Editor ;
-- vérification d'un build Windows.
+- partie en ligne avec deux comptes ;
+- verification dans l'editeur Unity ;
+- verification d'un build Windows.
 
-Ces tests doivent être réalisés avec au moins deux comptes Supabase pour valider correctement les amis, la présence, les invitations et le matchmaking. Le projet contient aussi des tests EditMode pour les règles de Quixo et de Qomet, mais le rapport ne suppose pas que toute la partie Unity et online a été validée automatiquement.
+Ces tests doivent etre realises avec au moins deux comptes Supabase pour
+valider correctement les amis, la presence, les invitations et le matchmaking.
+Le projet contient aussi des tests EditMode pour les regles de Quixo et de
+Qomet, mais le rapport ne suppose pas que toute la partie Unity et online a
+ete validee automatiquement.
 
-## 15. Difficultés rencontrées
+## 15. Difficultes rencontrees
 
-Une première difficulté a été l'adaptation de Qomet. Contrairement à Quixo, Qomet ne peut pas être traité comme une simple grille carrée. Il faut afficher un plateau qui ressemble visuellement à un réseau de points, mais garder une logique de graphe pour savoir quels nœuds sont reliés.
+Une premiere difficulte a ete l'adaptation de Qomet. Contrairement a Quixo,
+Qomet ne peut pas etre traite comme une grille carree. Il faut afficher un
+plateau qui ressemble visuellement a un reseau de points, mais garder une
+logique de graphe pour savoir quels noeuds sont relies.
 
-Cette séparation entre rendu visuel et logique de graphe demande de faire attention. Une position peut exister dans la grille 7x7 utilisée par le code sans être un vrai nœud Qomet. Les règles doivent donc toujours vérifier que le nœud existe dans `QometGraph`.
+Cette separation entre rendu visuel et logique de graphe demande de la
+rigueur. Une position peut exister dans la grille 7x7 utilisee par le code
+sans etre un vrai noeud Qomet. Les regles doivent donc toujours verifier que
+le noeud existe dans `QometGraph`.
 
-La gestion des sessions Supabase a aussi demandé du soin. Un access token peut expirer pendant que le joueur utilise le menu, les amis ou le online. Le projet a donc besoin d'un helper capable de détecter l'expiration, de rafraîchir la session et de relancer la requête.
+La gestion des sessions Supabase a aussi demande du soin. Un access token
+peut expirer pendant que le joueur utilise le menu, les amis ou le online. Le
+projet a donc un helper capable de detecter l'expiration, de rafraichir la
+session et de relancer la requete.
 
-La synchronisation online est une autre difficulté. Comme le projet utilise le polling, il faut gérer les délais, les coups déjà reçus, le tour courant, les fins de partie et les cas où un match existe déjà.
+La synchronisation en ligne est une autre difficulte. Comme le projet utilise
+le polling, il faut gerer les delais, les coups deja recus, le tour courant,
+les fins de partie et les cas ou un match existe deja.
 
-Le matchmaking a aussi un piège classique : si deux joueurs cherchent en même temps, ils peuvent chacun croire devoir créer le match. Le projet utilise un tie-break basé sur `created_at` et l'id utilisateur pour éviter que deux matchs séparés soient créés. Il ignore aussi les lignes trop anciennes pour éviter de matcher avec un joueur qui a fermé Unity sans annuler.
+Le matchmaking a aussi un piege classique : si deux joueurs cherchent en meme
+temps, ils peuvent chacun croire devoir creer le match. Le projet utilise un
+tie-break base sur `created_at` et l'id utilisateur pour eviter que deux
+matchs separes soient crees. Il ignore aussi les lignes trop anciennes pour
+eviter de matcher avec un joueur qui a ferme Unity sans annuler.
 
-L'interface amis demande également plusieurs états : demande en attente, ami accepté, ami online/offline, invitation reçue, invitation envoyée puis acceptée. Cela rend la vue plus complexe qu'une simple liste de profils.
+L'interface amis demande egalement plusieurs etats : demande en attente, ami
+accepte, ami online / offline, invitation recue, invitation envoyee puis
+acceptee. Cela rend la vue plus complexe qu'une simple liste de profils.
 
-Enfin, il fallait maintenir les modes locaux pendant l'ajout du online. Le mode hors ligne et les parties locales doivent continuer à fonctionner même si Supabase n'est pas configuré ou si l'utilisateur n'est pas connecté.
+Enfin, il fallait maintenir les modes locaux pendant l'ajout du online. Le
+mode hors ligne et les parties locales doivent continuer a fonctionner meme
+si Supabase n'est pas configure ou si l'utilisateur n'est pas connecte.
 
-## 16. Améliorations possibles
+## 16. Ameliorations possibles
 
-La première amélioration serait d'utiliser Supabase Realtime pour recevoir les coups et les invitations plus rapidement, sans polling constant.
+Une premiere amelioration serait d'utiliser Supabase Realtime pour recevoir
+les coups et les invitations sans polling constant.
 
-Une autre amélioration importante serait la validation serveur des coups. Des RPC SQL ou des Edge Functions pourraient vérifier qu'un coup est légal avant de l'insérer dans `online_moves` et de modifier `online_matches`.
+Une autre amelioration importante serait la validation serveur des coups. Des
+RPC SQL ou des Edge Functions pourraient verifier qu'un coup est legal avant
+de l'inserer dans `online_moves` et de modifier `online_matches`.
 
-Le matchmaking pourrait aussi être déplacé côté serveur avec une fonction atomique. Cela réduirait encore les risques de concurrence quand plusieurs joueurs cherchent une partie en même temps.
+Le matchmaking pourrait aussi etre deplace cote serveur avec une fonction
+atomique. Cela reduirait encore les risques de concurrence quand plusieurs
+joueurs cherchent une partie en meme temps.
 
-Une reconnexion à une partie en cours serait utile. Si un joueur ferme le jeu puis revient, le client pourrait retrouver son match actif, rejouer les coups stockés et reprendre la partie.
+Une reconnexion a une partie en cours serait utile. Si un joueur ferme le jeu
+puis revient, le client pourrait retrouver son match actif, rejouer les coups
+stockes et reprendre la partie.
 
-Un abandon propre permettrait de quitter une partie en donnant la victoire à l'adversaire ou en marquant le match comme annulé selon le contexte.
+Un abandon propre permettrait de quitter une partie en donnant la victoire a
+l'adversaire ou en marquant le match comme annule selon le contexte.
 
-Le projet pourrait aussi ajouter un historique des parties, un classement, un timer de tour, un tutoriel intégré et de meilleures animations pour les pions, les étoiles et les poussées.
+Le projet pourrait aussi ajouter un historique des parties, un classement, un
+timer de tour, un tutoriel integre et de meilleures animations pour les pions,
+les etoiles et les poussees.
 
-Pour Qomet, des indications visuelles plus poussées pourraient aider le joueur : nœuds accessibles après sélection, prévisualisation d'une poussée, mise en évidence du carré gagnant et animation du retour en réserve.
+Pour Qomet, des indications visuelles plus poussees pourraient aider le
+joueur : noeuds accessibles apres selection, previsualisation d'une poussee,
+mise en evidence du carre gagnant et animation du retour en reserve.
 
 ## 17. Conclusion
 
-Le projet Quixo / Qomet propose une base jouable et cohérente. Il regroupe deux jeux abstraits dans une même application Unity, avec une interface complète, des modes locaux et une première version de jeu en ligne.
+Le projet Quixo / Qomet propose une base jouable et coherente. Il regroupe
+deux jeux dans une meme application Unity, avec une interface complete, des
+modes locaux et une premiere version de jeu en ligne.
 
-Supabase a permis d'ajouter un backend sans développer un serveur complet. Les comptes, les profils, les amis, la présence, les invitations, le matchmaking et les coups en ligne passent par des tables PostgreSQL accessibles depuis Unity en REST.
+Supabase a permis d'ajouter un backend sans developper un serveur dedie. Les
+comptes, les profils, les amis, la presence, les invitations, le matchmaking
+et les coups en ligne passent par des tables PostgreSQL accessibles depuis
+Unity en REST.
 
-Le projet reste améliorable, surtout sur la validation serveur, le realtime, la reconnexion et les fonctionnalités compétitives. Malgré cela, il présente déjà une base solide pour un rendu : Quixo est jouable, Qomet possède une logique propre en graphe, et la couche online permet de relier deux joueurs dans des conditions simples.
+Le projet reste ameliorable, surtout sur la validation serveur, le realtime,
+la reconnexion et les fonctionnalites competitives. Malgre cela, il propose
+deja une base utilisable pour un rendu : Quixo est jouable, Qomet a sa
+propre logique en graphe, et la couche en ligne permet de relier deux joueurs
+dans des conditions simples.
