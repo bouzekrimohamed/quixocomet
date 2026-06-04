@@ -196,6 +196,12 @@ namespace QuixoUnity.Online
         public static string CurrentTurnId;
         public static GameKind SelectedGameKind;
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
+        private static void ClearOnApplicationStart()
+        {
+            Clear();
+        }
+
         public static void Start(OnlineMatchDto match, string localUserId, string opponentUsername = "")
         {
             if (!IsValidForLocalPlayer(match, localUserId))

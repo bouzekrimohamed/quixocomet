@@ -1,17 +1,19 @@
-// Remplacer uniquement ces trois valeurs quand les archives sont publiées.
+// Modifier uniquement ces valeurs quand une nouvelle release est publiee.
 const DOWNLOADS = {
-  windows: "WINDOWS_DOWNLOAD_URL",
-  linux: "LINUX_DOWNLOAD_URL",
-  macos: "MACOS_DOWNLOAD_URL"
+  windows: "https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildWindows.zip",
+  linux: "https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildLinux.zip",
+  macos: null
 };
 
 document.querySelectorAll("[data-download]").forEach((button) => {
   const url = DOWNLOADS[button.dataset.download];
-  button.href = url;
-  button.addEventListener("click", (event) => {
-    if (!url || url.endsWith("_DOWNLOAD_URL")) {
-      event.preventDefault();
-      alert("Ce téléchargement sera bientôt disponible.");
-    }
-  });
+  if (url) {
+    button.href = url;
+    return;
+  }
+
+  button.removeAttribute("href");
+  button.textContent = "Bientôt disponible";
+  button.classList.add("disabled");
+  button.setAttribute("aria-disabled", "true");
 });

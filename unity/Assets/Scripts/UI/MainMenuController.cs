@@ -47,6 +47,8 @@ namespace QuixoUnity.UI
 
         private void Awake()
         {
+            // Entrer dans le menu ne doit jamais reprendre une partie transitoire.
+            OnlineSessionTransit.Clear();
             SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
             ResolveReferences();
             BindButtons();

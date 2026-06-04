@@ -25,6 +25,9 @@ unity/Assets/Scripts/Auth/SupabaseLocalConfig.cs.meta
 unity/BuildWindows/
 unity/BuildLinux/
 unity/BuildMac/
+unity/BuildWindows.zip
+unity/BuildLinux.zip
+unity/BuildMac.zip
 
 .claude/worktrees/
 .claude/

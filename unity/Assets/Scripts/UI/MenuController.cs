@@ -1,5 +1,6 @@
 using QuixoUnity.Core;
 using QuixoUnity.Gameplay;
+using QuixoUnity.Online;
 using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -19,6 +20,7 @@ namespace QuixoUnity.UI
 
         private void Awake()
         {
+            OnlineSessionTransit.Clear();
             SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
             ResolveThemeButton();
             BindThemeButton();
