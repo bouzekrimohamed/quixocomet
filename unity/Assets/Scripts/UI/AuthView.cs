@@ -55,7 +55,7 @@ namespace QuixoUnity.UI
 
             if (!SupabaseSettings.IsConfigured)
             {
-                SetMessage("Supabase non configure. Vous pouvez continuer hors ligne.", false);
+                SetMessage("Service en ligne indisponible. Vous pouvez continuer hors ligne.", false);
             }
         }
 

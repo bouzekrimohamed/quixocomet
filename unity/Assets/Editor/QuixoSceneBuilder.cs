@@ -220,7 +220,7 @@ namespace QuixoUnity.EditorTools
             var offlineButton = CreateButton(guestCard.transform, "OfflineButton", "Continuer hors ligne", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -150f), new Vector2(360f, 54f), palette.UiText, palette.UiButtonDisabled);
 
-            var message = CreateText(panel.transform, "MessageLabel", "Configurez Supabase ou continuez hors ligne.", 18f, TextAlignmentOptions.Center, palette.UiMuted,
+            var message = CreateText(panel.transform, "MessageLabel", "Connectez-vous ou continuez hors ligne.", 18f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -726f), new Vector2(620f, 50f));
 
             AssignObject(authView, "authService", authService);
@@ -279,25 +279,49 @@ namespace QuixoUnity.EditorTools
             var connected = CreateText(panel.transform, "ConnectedLabel", "Connecte : Invite", 19f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -160f), new Vector2(560f, 32f));
 
-            var quixoButton = CreateButton(panel.transform, "QuixoButton", "Jouer Quixo local", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -226f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
-            var qometButton = CreateButton(panel.transform, "QometButton", "Jouer Qomet local", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -292f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
-            var quixoOnlineButton = CreateButton(panel.transform, "QuixoOnlineButton", "Jouer Quixo en ligne", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -358f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
-            var qometOnlineButton = CreateButton(panel.transform, "QometOnlineButton", "Jouer Qomet en ligne", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -424f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var mainActionsPanel = CreateAuthModePanel(panel.transform, "MainActionsPanel", new Vector2(520f, 500f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -210f));
+            var playButton = CreateButton(mainActionsPanel.transform, "PlayButton", "Jouer", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var friendsButton = CreateButton(mainActionsPanel.transform, "FriendsButton", "Amis", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -110f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+            var themeButton = CreateButton(mainActionsPanel.transform, "ThemeButton", $"Theme : {VisualThemeCatalog.DisplayName(ActiveGameplayTheme)}", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -172f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+            var logoutButton = CreateButton(mainActionsPanel.transform, "LogoutButton", "Deconnexion", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -234f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+            var quitButton = CreateButton(mainActionsPanel.transform, "QuitButton", "Quitter", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -296f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+
+            var modePanel = CreateAuthModePanel(panel.transform, "ModePanel", new Vector2(520f, 360f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -250f));
+            CreateText(modePanel.transform, "ModeTitle", "Choisir le mode", 27f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -20f), new Vector2(460f, 44f));
+            var localButton = CreateButton(modePanel.transform, "LocalButton", "Jouer en local", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -96f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var onlineButton = CreateButton(modePanel.transform, "OnlineButton", "Jouer en ligne", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -166f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var modeBackButton = CreateButton(modePanel.transform, "ModeBackButton", "Retour", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -236f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+
+            var gamePanel = CreateAuthModePanel(panel.transform, "GamePanel", new Vector2(520f, 500f),
+                new Vector2(0.5f, 1f), new Vector2(0f, -220f));
+            CreateText(gamePanel.transform, "GameTitle", "Choisir le jeu", 27f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(460f, 44f));
+            var quixoButton = CreateButton(gamePanel.transform, "QuixoButton", "Quixo", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var qometButton = CreateButton(gamePanel.transform, "QometButton", "Qomet", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -152f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var quixoOnlineButton = CreateButton(gamePanel.transform, "QuixoOnlineButton", "Matchmaking Quixo", palette.UiButton,
+                new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var qometOnlineButton = CreateButton(gamePanel.transform, "QometOnlineButton", "Matchmaking Qomet", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -152f), new Vector2(420f, 56f), palette.UiText, palette.UiButtonDisabled);
+            var gameBackButton = CreateButton(gamePanel.transform, "GameBackButton", "Retour", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
+            modePanel.gameObject.SetActive(false);
+            gamePanel.gameObject.SetActive(false);
             var cancelOnlineButton = CreateButton(panel.transform, "CancelOnlineButton", "Annuler recherche", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(0f, -490f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
             cancelOnlineButton.gameObject.SetActive(false);
-            var friendsButton = CreateButton(panel.transform, "FriendsButton", "Amis", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -490f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
-            var themeButton = CreateButton(panel.transform, "ThemeButton", $"Theme : {VisualThemeCatalog.DisplayName(ActiveGameplayTheme)}", palette.UiButton,
-                new Vector2(0.5f, 1f), new Vector2(0f, -552f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
-            var logoutButton = CreateButton(panel.transform, "LogoutButton", "Deconnexion", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -614f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
-            var quitButton = CreateButton(panel.transform, "QuitButton", "Quitter", palette.UiButtonSecondary,
-                new Vector2(0.5f, 1f), new Vector2(0f, -676f), new Vector2(420f, 50f), palette.UiText, palette.UiButtonDisabled);
             var status = CreateText(panel.transform, "MenuStatusLabel", "", 17f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -750f), new Vector2(560f, 44f));
 
@@ -324,6 +348,11 @@ namespace QuixoUnity.EditorTools
             AssignObject(menuController, "statusLabel", status);
             AssignObject(menuController, "quixoButton", quixoButton);
             AssignObject(menuController, "qometButton", qometButton);
+            AssignObject(menuController, "playButton", playButton);
+            AssignObject(menuController, "localButton", localButton);
+            AssignObject(menuController, "onlineButton", onlineButton);
+            AssignObject(menuController, "modeBackButton", modeBackButton);
+            AssignObject(menuController, "gameBackButton", gameBackButton);
             AssignObject(menuController, "quixoOnlineButton", quixoOnlineButton);
             AssignObject(menuController, "qometOnlineButton", qometOnlineButton);
             AssignObject(menuController, "cancelOnlineButton", cancelOnlineButton);
@@ -332,6 +361,9 @@ namespace QuixoUnity.EditorTools
             AssignObject(menuController, "logoutButton", logoutButton);
             AssignObject(menuController, "quitButton", quitButton);
             AssignObject(menuController, "friendsPanel", friendsPanel);
+            AssignObject(menuController, "mainActionsPanel", mainActionsPanel.gameObject);
+            AssignObject(menuController, "modePanel", modePanel.gameObject);
+            AssignObject(menuController, "gamePanel", gamePanel.gameObject);
             AssignObject(menuController, "friendsView", friendsView);
             AssignObject(friendsView, "friendService", friendService);
             AssignObject(friendsView, "onlineMatchService", onlineMatchService);

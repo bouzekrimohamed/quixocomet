@@ -17,6 +17,20 @@ Projet Unity 2022.3.40f1 avec :
 - matchmaking public Quixo/Qomet;
 - synchronisation des coups par polling Supabase.
 
+## Telechargement et lancement rapide
+
+La page de telechargement Windows, Linux et macOS est disponible ici :
+
+https://bouzekrimohamed.github.io/quixocomet/download/
+
+Telechargez l'archive adaptee, extrayez-la, puis lancez l'executable. Les builds
+etudiants ne sont pas signes : Windows et macOS peuvent afficher un
+avertissement au premier lancement. Sous Linux, rendez le fichier executable si
+necessaire.
+
+Apres une inscription, l'adresse email doit etre confirmee avant la premiere
+connexion.
+
 ## Lancer dans Unity
 
 1. Ouvrir `C:/Users/lm_bo/Documents/PROJET/quixocomet/unity`.

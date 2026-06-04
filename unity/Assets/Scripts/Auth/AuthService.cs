@@ -48,7 +48,7 @@ namespace QuixoUnity.Auth
 
             if (!SupabaseSettings.IsConfigured)
             {
-                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure."));
+                onComplete?.Invoke(AuthOperationResult.Fail("Service en ligne indisponible."));
                 return;
             }
 
@@ -59,7 +59,7 @@ namespace QuixoUnity.Auth
         {
             if (!SupabaseSettings.IsConfigured)
             {
-                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure."));
+                onComplete?.Invoke(AuthOperationResult.Fail("Service en ligne indisponible."));
                 return;
             }
 
@@ -126,7 +126,7 @@ namespace QuixoUnity.Auth
         {
             if (!SupabaseSettings.IsConfigured)
             {
-                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure. Renseignez l'URL et la cle anon publique."));
+                onComplete?.Invoke(AuthOperationResult.Fail("Service en ligne indisponible."));
                 yield break;
             }
 
@@ -155,7 +155,14 @@ namespace QuixoUnity.Auth
 
             if (string.IsNullOrWhiteSpace(authResponse.access_token))
             {
-                onComplete?.Invoke(AuthOperationResult.Ok("Compte cree. Verifiez votre email si Supabase demande une confirmation.", authResponse));
+                onComplete?.Invoke(AuthOperationResult.Ok("Compte cree. Verifiez votre email avant de vous connecter.", authResponse));
+                yield break;
+            }
+
+            if (!authResponse.user.IsEmailConfirmed)
+            {
+                SessionManager.ClearSession();
+                onComplete?.Invoke(AuthOperationResult.Fail("Veuillez confirmer votre email avant de vous connecter."));
                 yield break;
             }
 
@@ -250,7 +257,7 @@ namespace QuixoUnity.Auth
         {
             if (!SupabaseSettings.IsConfigured)
             {
-                onComplete?.Invoke(AuthOperationResult.Fail("Supabase n'est pas configure."));
+                onComplete?.Invoke(AuthOperationResult.Fail("Service en ligne indisponible."));
                 yield break;
             }
 

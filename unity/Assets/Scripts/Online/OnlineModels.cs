@@ -198,7 +198,7 @@ namespace QuixoUnity.Online
 
         public static void Start(OnlineMatchDto match, string localUserId, string opponentUsername = "")
         {
-            if (match == null)
+            if (!IsValidForLocalPlayer(match, localUserId))
             {
                 Clear();
                 return;
@@ -213,6 +213,17 @@ namespace QuixoUnity.Online
             SelectedGameKind = ParseGameKind(match.game_kind);
             OpponentUserId = match.player1_id == localUserId ? match.player2_id : match.player1_id;
             OpponentUsername = string.IsNullOrWhiteSpace(opponentUsername) ? ShortId(OpponentUserId) : opponentUsername;
+        }
+
+        public static bool IsValidForLocalPlayer(OnlineMatchDto match, string localUserId)
+        {
+            return match != null
+                && !string.IsNullOrWhiteSpace(match.id)
+                && !string.IsNullOrWhiteSpace(localUserId)
+                && !string.IsNullOrWhiteSpace(match.player1_id)
+                && !string.IsNullOrWhiteSpace(match.player2_id)
+                && match.player1_id != match.player2_id
+                && (localUserId == match.player1_id || localUserId == match.player2_id);
         }
 
         public static void UpdateMatch(OnlineMatchDto match)

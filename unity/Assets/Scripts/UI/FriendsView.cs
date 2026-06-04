@@ -29,11 +29,9 @@ namespace QuixoUnity.UI
         [SerializeField] private OnlinePresenceService onlinePresenceService;
 
         private bool _busy;
-        private bool _loadingAcceptedMatch;
         private Coroutine _refreshRoutine;
         private FriendSummary _lastSummary;
         private Dictionary<string, bool> _lastPresence = new();
-        private string _lastConsumedInviteId = string.Empty;
 
         private void Awake()
         {
@@ -208,11 +206,7 @@ namespace QuixoUnity.UI
                     RenderMatchInvites(invites);
                     onlineMatchService.LoadAcceptedSentInvites(accepted =>
                     {
-                        if (TryOpenAcceptedSentInvite(accepted))
-                        {
-                            return;
-                        }
-
+                        RenderAcceptedSentInvites(accepted);
                         SetStatus("Amis et invitations a jour.");
                     });
                 });
@@ -245,6 +239,29 @@ namespace QuixoUnity.UI
             if (rendered == 0)
             {
                 CreateInfoRow(invitesContainer, "Aucune invitation de partie en attente.");
+            }
+        }
+
+        private void RenderAcceptedSentInvites(List<MatchInviteDto> invites)
+        {
+            if (invitesContainer == null || invites == null)
+            {
+                return;
+            }
+
+            foreach (var invite in invites)
+            {
+                if (invite == null || string.IsNullOrWhiteSpace(invite.match_id) || invite.status != "accepted")
+                {
+                    continue;
+                }
+
+                var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+                var row = CreateRow(invitesContainer, palette);
+                CreateRowDot(row.transform, palette, false, hidden: true);
+                CreateRowLabel(row.transform, $"Invitation acceptee par {ResolveFriendName(invite.to_user_id)}", palette.UiText, palette, flex: true);
+                var join = CreateRowButton(row.transform, "Rejoindre", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+                join.onClick.AddListener(() => JoinAcceptedInvite(invite));
             }
         }
 
@@ -379,6 +396,12 @@ namespace QuixoUnity.UI
                 }
 
                 Debug.Log($"[Online] Accepted invite {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
+                if (!OnlineSessionTransit.IsValidForLocalPlayer(result.Match, SessionManager.UserId))
+                {
+                    SetStatus("Match invalide ou inaccessible.");
+                    return;
+                }
+
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.from_user_id));
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
@@ -409,30 +432,18 @@ namespace QuixoUnity.UI
             });
         }
 
-        private bool TryOpenAcceptedSentInvite(List<MatchInviteDto> invites)
+        private void JoinAcceptedInvite(MatchInviteDto invite)
         {
-            if (_loadingAcceptedMatch || invites == null || invites.Count == 0)
+            if (_busy || invite == null || string.IsNullOrWhiteSpace(invite.match_id))
             {
-                return false;
+                return;
             }
 
-            var invite = invites[0];
-            if (invite == null || string.IsNullOrWhiteSpace(invite.match_id))
-            {
-                return false;
-            }
-
-            // Eviter de rouvrir un match deja consomme (eg. partie deja jouee puis terminee).
-            if (!string.IsNullOrEmpty(_lastConsumedInviteId) && _lastConsumedInviteId == invite.id)
-            {
-                return false;
-            }
-
-            _loadingAcceptedMatch = true;
-            SetStatus("Invitation acceptee. Chargement du match...");
+            SetBusy(true);
+            SetStatus("Chargement du match...");
             onlineMatchService.FetchMatch(invite.match_id, result =>
             {
-                _loadingAcceptedMatch = false;
+                SetBusy(false);
                 if (result == null || !result.Success || result.Match == null)
                 {
                     SetStatus(result != null ? result.Message : "Match introuvable.");
@@ -441,13 +452,17 @@ namespace QuixoUnity.UI
 
                 if (!string.Equals(result.Match.status, "active", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    // Le match a deja ete joue ou annule, on ignore cette invitation accepted.
-                    _lastConsumedInviteId = invite.id;
-                    SetStatus("Aucune nouvelle invitation acceptee.");
+                    SetStatus("Cette partie est terminee ou annulee.");
+                    Refresh();
                     return;
                 }
 
-                _lastConsumedInviteId = invite.id;
+                if (!OnlineSessionTransit.IsValidForLocalPlayer(result.Match, SessionManager.UserId))
+                {
+                    SetStatus("Match invalide ou inaccessible.");
+                    return;
+                }
+
                 Debug.Log($"[Online] Accepted invite (sender side) {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.to_user_id));
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
@@ -460,8 +475,6 @@ namespace QuixoUnity.UI
 
                 SetStatus("GameplayScene introuvable. Regenerer les scenes.");
             });
-
-            return true;
         }
 
         private GameObject CreateRow(Transform parent, GameplayPalette palette)

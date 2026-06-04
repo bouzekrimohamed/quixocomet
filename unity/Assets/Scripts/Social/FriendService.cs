@@ -342,7 +342,7 @@ namespace QuixoUnity.Social
         {
             if (!SupabaseSettings.IsConfigured)
             {
-                onComplete?.Invoke(SocialOperationResult.Fail("Supabase n'est pas configure."));
+                onComplete?.Invoke(SocialOperationResult.Fail("Service en ligne indisponible."));
                 return false;
             }
 

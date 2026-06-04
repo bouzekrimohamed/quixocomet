@@ -852,7 +852,7 @@ namespace QuixoUnity.Online
         {
             if (!SupabaseSettings.IsConfigured)
             {
-                onComplete?.Invoke(OnlineOperationResult.Fail("Supabase n'est pas configure."));
+                onComplete?.Invoke(OnlineOperationResult.Fail("Service en ligne indisponible."));
                 return false;
             }
 

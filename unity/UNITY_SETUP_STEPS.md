@@ -140,3 +140,15 @@ Pour tester online, utiliser deux comptes Supabase differents avec deux instance
 ## 9. Future V2 online
 
 Ajouter ensuite Supabase Realtime, validation serveur par RPC/Edge Function, reconnexion, abandon, timer et classement.
+# Scenes et builds
+
+Apres modification des scripts ou du Scene Builder :
+
+1. Stop Play.
+2. `Assets > Refresh`.
+3. `Tools > Quixo > Create/Repair Scenes`.
+4. Ouvrir `IntroVideoScene`, puis lancer Play.
+
+Pour distribuer le jeu, creer separement les builds Windows x86_64, Linux x86_64
+et macOS. Les dossiers `unity/BuildWindows`, `unity/BuildLinux` et
+`unity/BuildMac` sont ignores par Git.

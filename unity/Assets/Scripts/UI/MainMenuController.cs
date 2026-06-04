@@ -18,6 +18,11 @@ namespace QuixoUnity.UI
         [SerializeField] private TextMeshProUGUI statusLabel;
         [SerializeField] private Button quixoButton;
         [SerializeField] private Button qometButton;
+        [SerializeField] private Button playButton;
+        [SerializeField] private Button localButton;
+        [SerializeField] private Button onlineButton;
+        [SerializeField] private Button modeBackButton;
+        [SerializeField] private Button gameBackButton;
         [SerializeField] private Button quixoOnlineButton;
         [SerializeField] private Button qometOnlineButton;
         [SerializeField] private Button cancelOnlineButton;
@@ -26,6 +31,9 @@ namespace QuixoUnity.UI
         [SerializeField] private Button logoutButton;
         [SerializeField] private Button quitButton;
         [SerializeField] private GameObject friendsPanel;
+        [SerializeField] private GameObject mainActionsPanel;
+        [SerializeField] private GameObject modePanel;
+        [SerializeField] private GameObject gamePanel;
         [SerializeField] private FriendsView friendsView;
         [SerializeField] private AuthService authService;
         [SerializeField] private FriendService friendService;
@@ -49,6 +57,7 @@ namespace QuixoUnity.UI
             {
                 friendsPanel.SetActive(false);
             }
+            ShowMainActions();
         }
 
         private void Start()
@@ -104,6 +113,43 @@ namespace QuixoUnity.UI
             }
 
             StartOnlineGame(GameKind.Qomet);
+        }
+
+        public void ShowModeChoice()
+        {
+            SetPanelState(false, true, false);
+        }
+
+        public void ShowLocalChoice()
+        {
+            SetPanelState(false, false, true);
+            SetActive(quixoButton, true);
+            SetActive(qometButton, true);
+            SetActive(quixoOnlineButton, false);
+            SetActive(qometOnlineButton, false);
+            SetInteractable(quixoButton, true);
+            SetInteractable(qometButton, true);
+        }
+
+        public void ShowOnlineChoice()
+        {
+            if (!RequireOnlineAccount())
+            {
+                return;
+            }
+
+            SetPanelState(false, false, true);
+            SetActive(quixoButton, false);
+            SetActive(qometButton, false);
+            SetActive(quixoOnlineButton, true);
+            SetActive(qometOnlineButton, true);
+            SetInteractable(quixoOnlineButton, true);
+            SetInteractable(qometOnlineButton, true);
+        }
+
+        public void ShowMainActions()
+        {
+            SetPanelState(true, false, false);
         }
 
         private bool RequireOnlineAccount()
@@ -251,6 +297,13 @@ namespace QuixoUnity.UI
                     return;
                 }
 
+                if (!OnlineSessionTransit.IsValidForLocalPlayer(result.Match, SessionManager.UserId))
+                {
+                    SetOnlineSearching(false);
+                    SetStatus("Match invalide ou inaccessible.");
+                    return;
+                }
+
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId);
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
@@ -301,6 +354,11 @@ namespace QuixoUnity.UI
             statusLabel ??= FindChild<TextMeshProUGUI>("MenuStatusLabel");
             quixoButton ??= FindChild<Button>("QuixoButton");
             qometButton ??= FindChild<Button>("QometButton");
+            playButton ??= FindChild<Button>("PlayButton");
+            localButton ??= FindChild<Button>("LocalButton");
+            onlineButton ??= FindChild<Button>("OnlineButton");
+            modeBackButton ??= FindChild<Button>("ModeBackButton");
+            gameBackButton ??= FindChild<Button>("GameBackButton");
             quixoOnlineButton ??= FindChild<Button>("QuixoOnlineButton");
             qometOnlineButton ??= FindChild<Button>("QometOnlineButton");
             cancelOnlineButton ??= FindChild<Button>("CancelOnlineButton");
@@ -309,6 +367,9 @@ namespace QuixoUnity.UI
             logoutButton ??= FindChild<Button>("LogoutButton");
             quitButton ??= FindChild<Button>("QuitButton");
             friendsView ??= FindObjectOfType<FriendsView>(true);
+            mainActionsPanel ??= FindChild<Transform>("MainActionsPanel")?.gameObject;
+            modePanel ??= FindChild<Transform>("ModePanel")?.gameObject;
+            gamePanel ??= FindChild<Transform>("GamePanel")?.gameObject;
 
             if (friendsPanel == null && friendsView != null)
             {
@@ -325,6 +386,11 @@ namespace QuixoUnity.UI
         {
             Bind(quixoButton, StartQuixo);
             Bind(qometButton, StartQomet);
+            Bind(playButton, ShowModeChoice);
+            Bind(localButton, ShowLocalChoice);
+            Bind(onlineButton, ShowOnlineChoice);
+            Bind(modeBackButton, ShowMainActions);
+            Bind(gameBackButton, ShowModeChoice);
             Bind(quixoOnlineButton, StartOnlineQuixo);
             Bind(qometOnlineButton, StartOnlineQomet);
             Bind(cancelOnlineButton, CancelOnlineSearch);
@@ -366,6 +432,11 @@ namespace QuixoUnity.UI
 
             ApplyButton(quixoButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(qometButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(playButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(localButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(onlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(modeBackButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(gameBackButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(quixoOnlineButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(qometOnlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(cancelOnlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
@@ -419,6 +490,13 @@ namespace QuixoUnity.UI
                 cancelOnlineButton.gameObject.SetActive(searching);
                 cancelOnlineButton.interactable = searching;
             }
+        }
+
+        private void SetPanelState(bool main, bool mode, bool game)
+        {
+            if (mainActionsPanel != null) mainActionsPanel.SetActive(main);
+            if (modePanel != null) modePanel.SetActive(mode);
+            if (gamePanel != null) gamePanel.SetActive(game);
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action)
@@ -483,6 +561,14 @@ namespace QuixoUnity.UI
             if (button != null)
             {
                 button.interactable = interactable;
+            }
+        }
+
+        private static void SetActive(Button button, bool active)
+        {
+            if (button != null)
+            {
+                button.gameObject.SetActive(active);
             }
         }
 

@@ -621,3 +621,12 @@ grant execute on function public.matchmake_user(text) to authenticated;
 Avantages : verrou `for update skip locked` garantit qu'aucun autre RPC ne peut prendre le meme adversaire. Aucun risque de double match.
 
 Si vous activez cette RPC, ouvrir un ticket Unity pour remplacer `TryFindOrCreateMatchRoutine` par un seul `POST /rest/v1/rpc/matchmake_user` avec body `{ "p_game_kind": "Quixo" }`. **Tant que vous n'avez pas migre Unity, ne lancez PAS cette RPC car elle n'est pas appelee** : juste la creer ne casse rien, mais elle reste dormante.
+# Confirmation email obligatoire
+
+Dans le tableau de bord Supabase, ouvrir `Authentication > Providers > Email`
+et activer `Confirm email`. Un nouveau compte doit cliquer sur le lien reçu par
+email avant de pouvoir se connecter dans Unity. Le client verifie aussi
+`email_confirmed_at` ou `confirmed_at` avant d'enregistrer une session.
+
+Conserver l'URL de reset password GitHub Pages autorisee :
+`https://bouzekrimohamed.github.io/quixocomet/reset-password/`.

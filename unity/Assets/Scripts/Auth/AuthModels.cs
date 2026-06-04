@@ -28,6 +28,12 @@ namespace QuixoUnity.Auth
     {
         public string id;
         public string email;
+        public string email_confirmed_at;
+        public string confirmed_at;
+
+        public bool IsEmailConfirmed =>
+            !string.IsNullOrWhiteSpace(email_confirmed_at) ||
+            !string.IsNullOrWhiteSpace(confirmed_at);
     }
 
     [Serializable]

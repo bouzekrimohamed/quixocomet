@@ -1,5 +1,38 @@
 # Rapport du projet Quixo / Qomet
 
+## Mode d'emploi et telechargement
+
+**Auteurs :** BOUZEKRI Mohamed, MEHDI Kirouche, ABEL Filiciaggi et LIGH Douang.
+
+Le jeu peut etre telecharge depuis la page
+https://bouzekrimohamed.github.io/quixocomet/download/. Elle propose les
+versions Windows, Linux et macOS.
+
+Sous Windows, il faut telecharger le ZIP, l'extraire puis lancer le fichier
+`.exe`. Windows peut afficher un avertissement, car ce build etudiant n'est pas
+signe. Sous Linux, il faut extraire le telechargement et rendre le fichier
+executable si le systeme le demande. Sous macOS, un clic droit puis `Ouvrir`
+permet de lancer l'application si elle est bloquee parce qu'elle n'est pas
+signee.
+
+Pour creer un compte, ouvrir l'onglet d'inscription, saisir un email, un
+username et un mot de passe, puis confirmer l'adresse avec le lien recu par
+email. La connexion est ensuite possible avec l'email ou le username.
+
+Pour une partie locale, suivre `Jouer > Jouer en local`, puis choisir Quixo ou
+Qomet. Ce parcours fonctionne aussi en mode invite. Pour une partie en ligne,
+il faut etre connecte, suivre `Jouer > Jouer en ligne`, puis choisir le
+matchmaking Quixo ou Qomet. Il est aussi possible d'ouvrir `Amis` et d'inviter
+directement un joueur.
+
+Dans le menu Amis, saisir le username recherche puis envoyer une demande. Le
+destinataire peut l'accepter ou la refuser. Une invitation de partie acceptee
+ne lance jamais le jeu toute seule : le joueur choisit quand la rejoindre.
+
+En cas d'oubli du mot de passe, saisir l'adresse email sur l'ecran de connexion
+et utiliser `Mot de passe oublie`. Le lien recu ouvre la page de
+reinitialisation du projet.
+
 ## 1. Introduction
 
 Ce projet est une application de jeu réalisée avec Unity. Elle regroupe deux jeux abstraits : Quixo et Qomet. L'objectif principal était d'obtenir une version jouable, présentable et suffisamment complète pour montrer à la fois la partie gameplay, l'interface et une première couche de jeu en ligne.
