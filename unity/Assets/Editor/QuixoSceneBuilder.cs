@@ -186,7 +186,9 @@ namespace QuixoUnity.EditorTools
             var signInCredentialInput = CreateInput(signInPanel.transform, "SignInCredentialInput", "Email ou username", false,
                 new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(500f, 58f), palette);
             var signInPasswordInput = CreateInput(signInPanel.transform, "SignInPasswordInput", "Mot de passe", true,
-                new Vector2(0.5f, 1f), new Vector2(0f, -158f), new Vector2(500f, 58f), palette);
+                new Vector2(0.5f, 1f), new Vector2(-45f, -158f), new Vector2(410f, 58f), palette);
+            var signInPasswordToggleButton = CreateButton(signInPanel.transform, "SignInPasswordToggleButton", "Voir", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(220f, -158f), new Vector2(80f, 58f), palette.UiText, palette.UiButtonDisabled);
             var loginButton = CreateButton(signInPanel.transform, "LoginButton", "Connexion", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -244f), new Vector2(500f, 58f), palette.UiText, palette.UiButtonDisabled);
             var resetPasswordButton = CreateButton(signInPanel.transform, "ResetPasswordButton", "Mot de passe oublie", WithAlpha(palette.UiButtonSecondary, 0.70f),
@@ -203,7 +205,9 @@ namespace QuixoUnity.EditorTools
             var signUpUsernameInput = CreateInput(signUpPanel.transform, "SignUpUsernameInput", "Username", false,
                 new Vector2(0.5f, 1f), new Vector2(0f, -158f), new Vector2(500f, 58f), palette);
             var signUpPasswordInput = CreateInput(signUpPanel.transform, "SignUpPasswordInput", "Mot de passe", true,
-                new Vector2(0.5f, 1f), new Vector2(0f, -234f), new Vector2(500f, 58f), palette);
+                new Vector2(0.5f, 1f), new Vector2(-45f, -234f), new Vector2(410f, 58f), palette);
+            var signUpPasswordToggleButton = CreateButton(signUpPanel.transform, "SignUpPasswordToggleButton", "Voir", palette.UiButtonSecondary,
+                new Vector2(0.5f, 1f), new Vector2(220f, -234f), new Vector2(80f, 58f), palette.UiText, palette.UiButtonDisabled);
             var registerButton = CreateButton(signUpPanel.transform, "RegisterButton", "Inscription", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -320f), new Vector2(500f, 58f), palette.UiText, palette.UiButtonDisabled);
             var alreadyAccountButton = CreateButton(signUpPanel.transform, "AlreadyAccountButton", "Deja un compte ? Connexion", WithAlpha(palette.UiButtonSecondary, 0.70f),
@@ -241,6 +245,8 @@ namespace QuixoUnity.EditorTools
             AssignObject(authView, "showGuestButton", showGuestButton);
             AssignObject(authView, "createAccountButton", createAccountButton);
             AssignObject(authView, "alreadyAccountButton", alreadyAccountButton);
+            AssignObject(authView, "signInPasswordToggleButton", signInPasswordToggleButton);
+            AssignObject(authView, "signUpPasswordToggleButton", signUpPasswordToggleButton);
             AssignObject(authView, "signInPanel", signInPanel);
             AssignObject(authView, "signUpPanel", signUpPanel);
             AssignObject(authView, "guestPanel", guestPanel);
@@ -641,6 +647,24 @@ namespace QuixoUnity.EditorTools
             leftButton.interactable = false;
             rightButton.interactable = false;
 
+            var gameOverPanel = CreateFullScreenImage(canvas, "GameOverPanel", new Color(0.01f, 0.015f, 0.03f, 0.78f));
+            gameOverPanel.GetComponent<Image>().raycastTarget = true;
+            var gameOverCard = CreatePanel(gameOverPanel.transform, "GameOverCard", new Vector2(620f, 360f), WithAlpha(palette.UiPanel, 0.98f));
+            SetAnchored(gameOverCard.GetComponent<RectTransform>(), new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(620f, 360f));
+            CreatePanelAccent(gameOverCard.transform, palette);
+            var gameOverHeading = CreateText(gameOverCard.transform, "GameOverHeadingLabel", "PARTIE TERMINEE", 15f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -30f), new Vector2(540f, 28f));
+            var gameOverTitle = CreateText(gameOverCard.transform, "GameOverTitleLabel", "Partie terminee", 38f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -80f), new Vector2(540f, 62f));
+            var gameOverSubtitle = CreateText(gameOverCard.transform, "GameOverSubtitleLabel", "La partie est terminee.", 20f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -154f), new Vector2(540f, 72f));
+            gameOverSubtitle.enableWordWrapping = true;
+            var gameOverReplayButton = CreateButton(gameOverCard.transform, "GameOverReplayButton", "Rejouer", palette.UiButton,
+                new Vector2(0.5f, 0f), new Vector2(-126f, 48f), new Vector2(220f, 58f), palette.UiText, palette.UiButtonDisabled);
+            var gameOverMenuButton = CreateButton(gameOverCard.transform, "GameOverMenuButton", "Retour au menu", palette.UiButtonSecondary,
+                new Vector2(0.5f, 0f), new Vector2(126f, 48f), new Vector2(220f, 58f), palette.UiText, palette.UiButtonDisabled);
+            gameOverPanel.SetActive(false);
+
             AssignObject(hudView, "turnLabel", turnLabel);
             AssignObject(hudView, "infoLabel", infoLabel);
             AssignObject(hudView, "restartButton", restartButton);
@@ -649,6 +673,12 @@ namespace QuixoUnity.EditorTools
             AssignObject(hudView, "downButton", downButton);
             AssignObject(hudView, "leftButton", leftButton);
             AssignObject(hudView, "rightButton", rightButton);
+            AssignObject(hudView, "gameOverPanel", gameOverPanel);
+            AssignObject(hudView, "gameOverHeadingLabel", gameOverHeading);
+            AssignObject(hudView, "gameOverTitleLabel", gameOverTitle);
+            AssignObject(hudView, "gameOverSubtitleLabel", gameOverSubtitle);
+            AssignObject(hudView, "gameOverMenuButton", gameOverMenuButton);
+            AssignObject(hudView, "gameOverReplayButton", gameOverReplayButton);
         }
 
         private static Camera CreateMainCamera(GameplayPalette palette)

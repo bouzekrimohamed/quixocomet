@@ -19,6 +19,12 @@ namespace QuixoUnity.UI
         [SerializeField] private Button downButton = null!;
         [SerializeField] private Button leftButton = null!;
         [SerializeField] private Button rightButton = null!;
+        [SerializeField] private GameObject gameOverPanel = null!;
+        [SerializeField] private TextMeshProUGUI gameOverHeadingLabel = null!;
+        [SerializeField] private TextMeshProUGUI gameOverTitleLabel = null!;
+        [SerializeField] private TextMeshProUGUI gameOverSubtitleLabel = null!;
+        [SerializeField] private Button gameOverMenuButton = null!;
+        [SerializeField] private Button gameOverReplayButton = null!;
         [Header("Animation settings")]
         [SerializeField] private float pulseDuration = 0.18f;
         [SerializeField] private float fadeDuration = 0.2f;
@@ -36,6 +42,7 @@ namespace QuixoUnity.UI
         private readonly Dictionary<Button, ColorBlock> _directionBaseColors = new();
         private readonly Dictionary<Button, Vector3> _directionBaseScales = new();
         private Vector3 _turnBaseScale = Vector3.one;
+        private bool _gameOverVisible;
 
         private void Awake()
         {
@@ -97,6 +104,9 @@ namespace QuixoUnity.UI
             BindButton(downButton, PlayDown);
             BindButton(leftButton, PlayLeft);
             BindButton(rightButton, PlayRight);
+            BindButton(gameOverMenuButton, controller.ReturnToMenu);
+            BindButton(gameOverReplayButton, controller.RestartGame);
+            HideGameOver();
         }
 
         public void SetGameKind(GameKind kind)
@@ -161,6 +171,51 @@ namespace QuixoUnity.UI
             if (restartButton != null)
             {
                 restartButton.interactable = enabled;
+            }
+        }
+
+        public void ShowGameOver(string title, string subtitle, bool allowReplay)
+        {
+            ResolveReferences();
+            if (_gameOverVisible)
+            {
+                return;
+            }
+
+            if (gameOverPanel == null)
+            {
+                Debug.LogWarning("HudView: game over panel is missing. Regenerate the scenes.", this);
+                return;
+            }
+
+            _gameOverVisible = true;
+            if (gameOverTitleLabel != null)
+            {
+                gameOverTitleLabel.text = string.IsNullOrWhiteSpace(title) ? "Partie terminee" : title;
+            }
+
+            if (gameOverSubtitleLabel != null)
+            {
+                gameOverSubtitleLabel.text = allowReplay
+                    ? subtitle
+                    : $"{subtitle}\nRejouer indisponible en ligne.";
+            }
+
+            if (gameOverReplayButton != null)
+            {
+                gameOverReplayButton.gameObject.SetActive(allowReplay);
+                gameOverReplayButton.interactable = allowReplay;
+            }
+
+            gameOverPanel.SetActive(true);
+        }
+
+        public void HideGameOver()
+        {
+            _gameOverVisible = false;
+            if (gameOverPanel != null)
+            {
+                gameOverPanel.SetActive(false);
             }
         }
 
@@ -364,6 +419,12 @@ namespace QuixoUnity.UI
             downButton ??= FindChildComponent<Button>("DownButton");
             leftButton ??= FindChildComponent<Button>("LeftButton");
             rightButton ??= FindChildComponent<Button>("RightButton");
+            gameOverPanel ??= FindChildComponent<Transform>("GameOverPanel")?.gameObject;
+            gameOverHeadingLabel ??= FindChildComponent<TextMeshProUGUI>("GameOverHeadingLabel");
+            gameOverTitleLabel ??= FindChildComponent<TextMeshProUGUI>("GameOverTitleLabel");
+            gameOverSubtitleLabel ??= FindChildComponent<TextMeshProUGUI>("GameOverSubtitleLabel");
+            gameOverMenuButton ??= FindChildComponent<Button>("GameOverMenuButton");
+            gameOverReplayButton ??= FindChildComponent<Button>("GameOverReplayButton");
 
             CacheDirectionButton(upButton);
             CacheDirectionButton(downButton);
@@ -392,6 +453,12 @@ namespace QuixoUnity.UI
                 turnPlayer2Color = new Color(0.720f, 0.115f, 0.155f, 1f);
             }
 
+            if (Luminance(palette.UiPanel) < 0.35f)
+            {
+                turnPlayer1Color = EnsureReadableOnDark(turnPlayer1Color);
+                turnPlayer2Color = EnsureReadableOnDark(turnPlayer2Color);
+            }
+
             SetImageColor("StatusPanel", WithAlpha(palette.UiPanel, Mathf.Max(0.52f, palette.UiPanel.a * 0.86f)));
             SetImageColor("DirectionsPanel", WithAlpha(palette.UiPanel, 0.34f));
 
@@ -411,7 +478,34 @@ namespace QuixoUnity.UI
             ApplyButtonTheme(downButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButtonTheme(leftButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButtonTheme(rightButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(gameOverMenuButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(gameOverReplayButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            if (gameOverTitleLabel != null)
+            {
+                gameOverTitleLabel.color = palette.UiText;
+            }
+
+            if (gameOverSubtitleLabel != null)
+            {
+                gameOverSubtitleLabel.color = palette.UiMuted;
+            }
+
+            if (gameOverHeadingLabel != null)
+            {
+                gameOverHeadingLabel.color = palette.UiMuted;
+            }
+
             SetDirectionControlsVisible(gameKind != GameKind.Qomet);
+        }
+
+        private static Color EnsureReadableOnDark(Color color)
+        {
+            return Luminance(color) >= 0.48f ? color : Color.Lerp(color, Color.white, 0.64f);
+        }
+
+        private static float Luminance(Color color)
+        {
+            return color.r * 0.2126f + color.g * 0.7152f + color.b * 0.0722f;
         }
 
         private void ApplyButtonTheme(Button button, Color normalColor, Color textColor, Color disabledColor)

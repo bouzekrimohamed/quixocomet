@@ -148,6 +148,12 @@ namespace QuixoUnity.UI
             {
                 statusLabel.color = palette.UiMuted;
             }
+
+            foreach (var label in GetComponentsInChildren<TextMeshProUGUI>(true))
+            {
+                bool muted = label.name.Contains("Subtitle") || label.name.Contains("Status");
+                label.color = muted ? palette.UiMuted : palette.UiText;
+            }
         }
 
         private void RenderSummary(FriendSummary summary)

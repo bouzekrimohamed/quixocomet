@@ -264,6 +264,7 @@ namespace QuixoUnity.Gameplay
                 boardView.Render(_state, null);
                 hudView.SetInfo(WinnerMessage(winner, gameKind));
                 hudView.SetTurn(_state.CurrentPlayer);
+                ShowGameOver(winner);
                 return;
             }
 
@@ -325,6 +326,7 @@ namespace QuixoUnity.Gameplay
 
             hudView.Bind(this);
             hudView.SetGameKind(gameKind);
+            hudView.HideGameOver();
             hudView.SetRestartEnabled(!OnlineSessionTransit.IsOnlineMatch);
             hudView.SetDirections(new List<MoveDirection>());
             boardView.Initialize(_state.Size, HandleCellClick, gameKind);
@@ -436,6 +438,12 @@ namespace QuixoUnity.Gameplay
                 yield return new WaitUntil(() => movesDone);
 
                 ApplyFetchedMoves(moves);
+                if (_onlineMatch != null && _onlineMatch.status == "finished")
+                {
+                    _onlinePollRoutine = null;
+                    yield break;
+                }
+
                 yield return new WaitForSeconds(OnlinePollSeconds);
             }
         }
@@ -612,6 +620,7 @@ namespace QuixoUnity.Gameplay
                 hudView.SetInfo(_onlineMatch.winner_id == SessionManager.UserId
                     ? "Victoire en ligne."
                     : "Defaite en ligne.");
+                ShowGameOver(winner);
                 return;
             }
 
@@ -706,6 +715,25 @@ namespace QuixoUnity.Gameplay
             }
 
             return winner == PlayerMark.Player1 ? OnlineSessionTransit.Player1Id : OnlineSessionTransit.Player2Id;
+        }
+
+        private void ShowGameOver(PlayerMark winner)
+        {
+            if (hudView == null || winner == PlayerMark.None)
+            {
+                return;
+            }
+
+            string winnerName = FormatPlayer(winner, gameKind);
+            if (IsOnlineGame)
+            {
+                string winnerId = WinnerUserId(winner);
+                winnerName = winnerId == SessionManager.UserId
+                    ? (string.IsNullOrWhiteSpace(SessionManager.Username) ? "vous" : SessionManager.Username)
+                    : (string.IsNullOrWhiteSpace(OnlineSessionTransit.OpponentUsername) ? "adversaire" : OnlineSessionTransit.OpponentUsername);
+            }
+
+            hudView.ShowGameOver($"Victoire de {winnerName}", "La partie est terminee.", !IsOnlineGame);
         }
 
         private static OnlineMovePayload CreateQometPlacePayload(int row, int col)

@@ -12,6 +12,12 @@ namespace QuixoUnity.Auth
 
         public void Register(string email, string password, string username, Action<AuthOperationResult> onComplete)
         {
+            if (string.IsNullOrWhiteSpace(username))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez un username."));
+                return;
+            }
+
             if (!ValidateInput(email, password, onComplete))
             {
                 return;
@@ -137,6 +143,11 @@ namespace QuixoUnity.Auth
             };
 
             string url = $"{SupabaseSettings.Url}/auth/v1/{endpoint}";
+            if (createProfile && !string.IsNullOrWhiteSpace(SupabaseSettings.EmailConfirmationRedirectUrl))
+            {
+                url += $"?redirect_to={UnityWebRequest.EscapeURL(SupabaseSettings.EmailConfirmationRedirectUrl)}";
+            }
+
             using var request = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload), string.Empty);
             yield return request.SendWebRequest();
 
@@ -310,13 +321,25 @@ namespace QuixoUnity.Auth
 
         private static bool ValidateInput(string email, string password, Action<AuthOperationResult> onComplete)
         {
-            if (string.IsNullOrWhiteSpace(email) || !email.Contains("@"))
+            if (string.IsNullOrWhiteSpace(email))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre email."));
+                return false;
+            }
+
+            if (!email.Contains("@"))
             {
                 onComplete?.Invoke(AuthOperationResult.Fail("Email invalide."));
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(password) || password.Length < 6)
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre mot de passe."));
+                return false;
+            }
+
+            if (password.Length < 6)
             {
                 onComplete?.Invoke(AuthOperationResult.Fail("Mot de passe trop court. Minimum 6 caracteres."));
                 return false;
@@ -333,7 +356,13 @@ namespace QuixoUnity.Auth
                 return false;
             }
 
-            if (string.IsNullOrWhiteSpace(password) || password.Length < 6)
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre mot de passe."));
+                return false;
+            }
+
+            if (password.Length < 6)
             {
                 onComplete?.Invoke(AuthOperationResult.Fail("Mot de passe trop court. Minimum 6 caracteres."));
                 return false;

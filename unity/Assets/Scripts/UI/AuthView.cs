@@ -35,6 +35,8 @@ namespace QuixoUnity.UI
         [SerializeField] private Button showGuestButton;
         [SerializeField] private Button createAccountButton;
         [SerializeField] private Button alreadyAccountButton;
+        [SerializeField] private Button signInPasswordToggleButton;
+        [SerializeField] private Button signUpPasswordToggleButton;
         [SerializeField] private CanvasGroup signInPanel;
         [SerializeField] private CanvasGroup signUpPanel;
         [SerializeField] private CanvasGroup guestPanel;
@@ -45,6 +47,8 @@ namespace QuixoUnity.UI
         private AuthMode _mode = AuthMode.SignIn;
         private bool _busy;
         private Coroutine _modeRoutine;
+        private bool _signInPasswordVisible;
+        private bool _signUpPasswordVisible;
 
         private void Awake()
         {
@@ -131,6 +135,18 @@ namespace QuixoUnity.UI
             SetMode(AuthMode.Guest, true);
         }
 
+        public void ToggleSignInPassword()
+        {
+            _signInPasswordVisible = !_signInPasswordVisible;
+            SetPasswordVisibility(SignInPassword, signInPasswordToggleButton, _signInPasswordVisible);
+        }
+
+        public void ToggleSignUpPassword()
+        {
+            _signUpPasswordVisible = !_signUpPasswordVisible;
+            SetPasswordVisibility(SignUpPassword, signUpPasswordToggleButton, _signUpPasswordVisible);
+        }
+
         private TMP_InputField SignInCredential => signInCredentialInput != null ? signInCredentialInput : emailInput;
         private TMP_InputField SignInPassword => signInPasswordInput != null ? signInPasswordInput : passwordInput;
         private TMP_InputField SignUpEmail => signUpEmailInput != null ? signUpEmailInput : emailInput;
@@ -192,6 +208,8 @@ namespace QuixoUnity.UI
             showGuestButton ??= FindChild<Button>("ShowGuestButton");
             createAccountButton ??= FindChild<Button>("CreateAccountButton");
             alreadyAccountButton ??= FindChild<Button>("AlreadyAccountButton");
+            signInPasswordToggleButton ??= FindChild<Button>("SignInPasswordToggleButton");
+            signUpPasswordToggleButton ??= FindChild<Button>("SignUpPasswordToggleButton");
             messageLabel ??= FindChild<TextMeshProUGUI>("MessageLabel");
 
             signInCredentialInput ??= emailInput;
@@ -203,6 +221,8 @@ namespace QuixoUnity.UI
             PreparePasswordField(passwordInput);
             PreparePasswordField(signInPasswordInput);
             PreparePasswordField(signUpPasswordInput);
+            SetPasswordVisibility(SignInPassword, signInPasswordToggleButton, false);
+            SetPasswordVisibility(SignUpPassword, signUpPasswordToggleButton, false);
         }
 
         private void BindButtons()
@@ -216,6 +236,8 @@ namespace QuixoUnity.UI
             Bind(showGuestButton, ShowGuest);
             Bind(createAccountButton, ShowSignUp);
             Bind(alreadyAccountButton, ShowSignIn);
+            Bind(signInPasswordToggleButton, ToggleSignInPassword);
+            Bind(signUpPasswordToggleButton, ToggleSignUpPassword);
         }
 
         private void ApplyTheme()
@@ -242,12 +264,24 @@ namespace QuixoUnity.UI
             ApplyButton(showGuestButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(createAccountButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(alreadyAccountButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(signInPasswordToggleButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(signUpPasswordToggleButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             if (messageLabel != null)
             {
                 messageLabel.color = palette.UiMuted;
             }
 
+            ApplySceneTextPalette(palette);
             UpdateModeButtonState();
+        }
+
+        private static void ApplySceneTextPalette(GameplayPalette palette)
+        {
+            foreach (var label in FindObjectsOfType<TextMeshProUGUI>(true))
+            {
+                bool muted = label.name.Contains("Subtitle") || label.name.Contains("Placeholder") || label.name.Contains("Message");
+                label.color = muted ? palette.UiMuted : palette.UiText;
+            }
         }
 
         private void SetBusy(bool busy)
@@ -262,6 +296,8 @@ namespace QuixoUnity.UI
             SetInteractable(showGuestButton, !busy);
             SetInteractable(createAccountButton, !busy);
             SetInteractable(alreadyAccountButton, !busy);
+            SetInteractable(signInPasswordToggleButton, !busy);
+            SetInteractable(signUpPasswordToggleButton, !busy);
         }
 
         private void SetMessage(string message, bool success)
@@ -387,6 +423,21 @@ namespace QuixoUnity.UI
 
             input.contentType = TMP_InputField.ContentType.Password;
             input.ForceLabelUpdate();
+        }
+
+        private static void SetPasswordVisibility(TMP_InputField input, Button toggleButton, bool visible)
+        {
+            if (input != null)
+            {
+                input.contentType = visible ? TMP_InputField.ContentType.Standard : TMP_InputField.ContentType.Password;
+                input.ForceLabelUpdate();
+            }
+
+            var label = toggleButton != null ? toggleButton.GetComponentInChildren<TextMeshProUGUI>(true) : null;
+            if (label != null)
+            {
+                label.text = visible ? "Masquer" : "Voir";
+            }
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action)

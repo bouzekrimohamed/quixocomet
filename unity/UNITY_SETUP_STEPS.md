@@ -40,6 +40,7 @@ Verifier dans :
 public const string ProjectUrl = "https://wcwufabumabolxhmpexc.supabase.co";
 public const string AnonKey = "sb_publishable_PwbgvZXpUn07HsvFRghnPg_R_9T5W3H";
 public const string PasswordResetRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/reset-password/";
+public const string EmailConfirmationRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/email-confirmed/";
 ```
 
 Important :
@@ -119,10 +120,13 @@ Verification attendue :
 - AuthScene visible;
 - mode hors ligne utilisable;
 - inscription/connexion fonctionnent apres configuration;
+- email non confirme refuse proprement la connexion;
+- boutons `Voir` / `Masquer` fonctionnent sur les deux mots de passe;
 - login par username fonctionne apres migration SQL email;
 - reset password ouvre le flux email Supabase;
 - menu et amis ne crashent pas;
-- Quixo/Qomet local restent jouables.
+- Quixo/Qomet local restent jouables;
+- la popup de fin de partie apparait une seule fois pour Quixo et Qomet;
 - avec deux comptes, presence/invitations/matchmaking online fonctionnent apres migration SQL.
 
 ## 8. Online V1
@@ -140,6 +144,21 @@ Pour tester online, utiliser deux comptes Supabase differents avec deux instance
 ## 9. Future V2 online
 
 Ajouter ensuite Supabase Realtime, validation serveur par RPC/Edge Function, reconnexion, abandon, timer et classement.
+
+## 10. Verification finale
+
+1. Stop Play.
+2. `Assets > Refresh`.
+3. `Tools > Quixo > Create/Repair Scenes`.
+4. Ouvrir `IntroVideoScene`.
+5. Play.
+6. Tester le theme sombre.
+7. Tester voir/cacher le mot de passe.
+8. Tester un email non confirme.
+9. Tester une victoire Quixo.
+10. Tester une victoire Qomet.
+11. Tester la page download.
+12. Tester la page email-confirmed.
 # Scenes et builds
 
 Apres modification des scripts ou du Scene Builder :

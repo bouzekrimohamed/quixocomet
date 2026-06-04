@@ -7,6 +7,7 @@ namespace QuixoUnity.Auth
         public const string ProjectUrl = "https://wcwufabumabolxhmpexc.supabase.co";
         public const string AnonKey = "sb_publishable_PwbgvZXpUn07HsvFRghnPg_R_9T5W3H";
         public const string PasswordResetRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/reset-password/";
+        public const string EmailConfirmationRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/email-confirmed/";
 
         private const string ProjectUrlPrefsKey = "quixo_supabase_project_url";
         private const string AnonKeyPrefsKey = "quixo_supabase_anon_key";

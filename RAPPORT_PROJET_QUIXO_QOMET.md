@@ -5,19 +5,27 @@
 **Auteurs :** BOUZEKRI Mohamed, MEHDI Kirouche, ABEL Filiciaggi et LIGH Douang.
 
 Le jeu peut etre telecharge depuis la page
-https://bouzekrimohamed.github.io/quixocomet/download/. Elle propose les
-versions Windows, Linux et macOS.
+https://bouzekrimohamed.github.io/quixocomet/download/. Elle propose les builds
+Windows et Linux. La version macOS est indiquee comme bientot disponible.
 
 Sous Windows, il faut telecharger le ZIP, l'extraire puis lancer le fichier
 `.exe`. Windows peut afficher un avertissement, car ce build etudiant n'est pas
-signe. Sous Linux, il faut extraire le telechargement et rendre le fichier
-executable si le systeme le demande. Sous macOS, un clic droit puis `Ouvrir`
-permet de lancer l'application si elle est bloquee parce qu'elle n'est pas
-signee.
+signe. Sous Linux, il faut extraire le telechargement puis lancer :
+
+```bash
+chmod +x QuixoQomet.x86_64
+./QuixoQomet.x86_64
+```
+
+Si le nom varie, les commandes `chmod +x *.x86_64` puis `./*.x86_64`
+permettent de lancer le build.
 
 Pour creer un compte, ouvrir l'onglet d'inscription, saisir un email, un
 username et un mot de passe, puis confirmer l'adresse avec le lien recu par
-email. La connexion est ensuite possible avec l'email ou le username.
+email. La connexion est refusee tant que l'email n'est pas confirme. Une fois
+le lien valide, Supabase redirige vers
+https://bouzekrimohamed.github.io/quixocomet/email-confirmed/. La connexion est
+ensuite possible avec l'email ou le username.
 
 Pour une partie locale, suivre `Jouer > Jouer en local`, puis choisir Quixo ou
 Qomet. Ce parcours fonctionne aussi en mode invite. Pour une partie en ligne,
@@ -32,6 +40,13 @@ ne lance jamais le jeu toute seule : le joueur choisit quand la rejoindre.
 En cas d'oubli du mot de passe, saisir l'adresse email sur l'ecran de connexion
 et utiliser `Mot de passe oublie`. Le lien recu ouvre la page de
 reinitialisation du projet.
+
+Quand une partie Quixo ou Qomet se termine, une fenetre affiche le gagnant et
+propose un retour au menu. Le bouton Rejouer est disponible en local et masque
+en ligne pour ne pas casser la synchronisation.
+
+En cas de probleme urgent avec l'installation ou le lancement, le contact
+developpeur est [lm_bouzekri@gmail.com](mailto:lm_bouzekri@gmail.com).
 
 ## 1. Introduction
 
@@ -65,7 +80,7 @@ Supabase PostgreSQL sert à stocker les données publiques ou liées au jeu : pr
 
 Supabase REST permet à Unity de communiquer avec la base sans serveur dédié. Les scripts utilisent `UnityWebRequest` pour envoyer des requêtes HTTP vers l'API Supabase.
 
-GitHub Pages est utilisé pour héberger la page de réinitialisation du mot de passe. Cette page reçoit les tokens envoyés par Supabase et permet à l'utilisateur de choisir un nouveau mot de passe.
+GitHub Pages est utilisé pour héberger la page de réinitialisation du mot de passe, la page de confirmation email et la page de téléchargement. La page de reset reçoit les tokens envoyés par Supabase et permet à l'utilisateur de choisir un nouveau mot de passe.
 
 Git et GitHub servent au versionnement et au partage du projet. Le projet contient aussi des fichiers de configuration et des guides pour ouvrir Unity, configurer Supabase et préparer un build Windows.
 
@@ -96,6 +111,8 @@ L'authentification repose sur Supabase Auth. L'utilisateur peut s'inscrire avec 
 La connexion accepte deux formats. Si l'identifiant contient un `@`, il est traité comme un email et envoyé directement à Supabase Auth. Sinon, Unity cherche d'abord dans `profiles` l'email correspondant au username, puis utilise cet email pour la connexion Supabase.
 
 Le mot de passe oublié passe par l'endpoint Supabase `recover`. Unity envoie l'email et une URL de redirection vers la page GitHub Pages du projet. Cette page statique utilise Supabase JS pour appliquer le nouveau mot de passe avec les tokens fournis dans le lien.
+
+La confirmation email est obligatoire. La requête d'inscription indique la page `email-confirmed` comme redirection et Unity refuse proprement la connexion tant que Supabase ne renvoie pas un email confirmé.
 
 Les sessions sont stockées côté Unity avec `PlayerPrefs`. Le projet conserve l'access token, le refresh token, l'id utilisateur, l'email et le username. Quand une requête authentifiée échoue à cause d'un JWT expiré ou invalide, `SupabaseRequestHelper` tente de rafraîchir la session avec le refresh token, puis relance la requête.
 
@@ -228,6 +245,8 @@ Les tests manuels prévus pour valider le projet sont les suivants :
 - création de compte avec email, mot de passe et username ;
 - connexion avec email ;
 - connexion avec username ;
+- refus propre d'une connexion avant confirmation email ;
+- page GitHub Pages `email-confirmed` après validation ;
 - mot de passe oublié et page GitHub Pages de reset ;
 - chargement du profil après connexion ;
 - ajout d'un ami par username ;

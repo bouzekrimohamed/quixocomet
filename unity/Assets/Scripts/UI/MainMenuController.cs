@@ -446,8 +446,18 @@ namespace QuixoUnity.UI
             ApplyButton(themeButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(logoutButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             ApplyButton(quitButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplySceneTextPalette(palette);
             RefreshThemeLabel();
             SetOnlineSearching(_searchingOnline);
+        }
+
+        private static void ApplySceneTextPalette(GameplayPalette palette)
+        {
+            foreach (var label in FindObjectsOfType<TextMeshProUGUI>(true))
+            {
+                bool muted = label.name.Contains("Subtitle") || label.name.Contains("Status") || label.name.Contains("Placeholder");
+                label.color = muted ? palette.UiMuted : palette.UiText;
+            }
         }
 
         private void RefreshThemeLabel()

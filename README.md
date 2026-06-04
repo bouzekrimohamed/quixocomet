@@ -1,79 +1,108 @@
-# Quixo / Qomet Unity
+# Quixo / Qomet
 
-Projet Unity 2022.3.40f1 avec :
+## Auteurs
 
-- Quixo local jouable;
-- Qomet local jouable;
-- themes visuels;
-- intro video `powered_by_mohamed_bouzekri.mp4`;
-- splash fallback `POWERED BY MOHAMED BOUZEKRI`;
-- authentification Supabase email/password;
-- reset password via GitHub Pages;
-- login par email ou username;
-- profil utilisateur simple;
-- ajout d'amis;
-- presence online/offline;
-- invitations ami pour Quixo/Qomet;
-- matchmaking public Quixo/Qomet;
-- synchronisation des coups par polling Supabase.
+- BOUZEKRI Mohamed
+- MEHDI Kirouche
+- ABEL Filiciaggi
+- LIGH Douang
 
-## Telechargement et lancement rapide
+## Presentation
 
-La page de telechargement Windows, Linux et macOS est disponible ici :
+Ce projet est une application Unity qui regroupe deux jeux abstraits, Quixo et
+Qomet. Nous avons ajoute un mode local, un mode en ligne, des comptes Supabase,
+une liste d'amis et du matchmaking.
+
+Le projet Unity utilise la version `2022.3.40f1`. Les builds proposes sont des
+builds etudiants et ne sont pas signes.
+
+## Telecharger le jeu
+
+La page de telechargement se trouve ici :
 
 https://bouzekrimohamed.github.io/quixocomet/download/
 
-Telechargez l'archive adaptee, extrayez-la, puis lancez l'executable. Les builds
-etudiants ne sont pas signes : Windows et macOS peuvent afficher un
-avertissement au premier lancement. Sous Linux, rendez le fichier executable si
-necessaire.
+## Installation Windows
 
-Apres une inscription, l'adresse email doit etre confirmee avant la premiere
-connexion.
+1. Telecharger `BuildWindows.zip`.
+2. Extraire le dossier.
+3. Lancer le fichier `.exe`.
+4. Si Windows affiche un avertissement, c'est parce que le build etudiant n'est pas signe.
 
-## Lancer dans Unity
+## Installation Linux
 
-1. Ouvrir `C:/Users/lm_bo/Documents/PROJET/quixocomet/unity`.
+1. Telecharger `BuildLinux.zip`.
+2. Extraire le dossier.
+3. Ouvrir un terminal dans le dossier.
+4. Lancer :
+
+```bash
+chmod +x QuixoQomet.x86_64
+./QuixoQomet.x86_64
+```
+
+Si le nom du fichier varie :
+
+```bash
+chmod +x *.x86_64
+./*.x86_64
+```
+
+## macOS
+
+La version macOS n'est pas encore disponible.
+
+## Configuration du compte
+
+- Creer un compte avec un email, un username et un mot de passe.
+- Confirmer l'email recu avant la premiere connexion.
+- Se connecter avec l'email ou le username.
+- Utiliser `Mot de passe oublie` si necessaire.
+
+## Jouer en local
+
+Depuis le menu, choisir `Jouer`, puis le mode local et Quixo ou Qomet. Le mode
+local reste disponible sans compte.
+
+## Jouer en ligne
+
+Il faut d'abord se connecter. Depuis le menu, choisir le mode en ligne puis
+Quixo ou Qomet. Il est aussi possible d'inviter directement un joueur depuis
+le panneau `Amis`.
+
+## Amis
+
+Le panneau `Amis` permet de rechercher un username, envoyer une demande,
+accepter ou refuser une demande et inviter un ami a jouer.
+
+## Technologies
+
+- Unity
+- C#
+- Supabase Auth
+- Supabase PostgreSQL
+- Supabase REST
+- GitHub Pages
+
+## Limites connues
+
+- Le build Windows n'est pas signe.
+- La version macOS n'est pas encore disponible.
+- Le online V1 est principalement client-authoritative.
+- La synchronisation online utilise du polling et pas encore Supabase Realtime.
+
+## Ouvrir le projet Unity
+
+1. Ouvrir le dossier `unity` avec Unity `2022.3.40f1`.
 2. Stop Play si necessaire.
-3. `Assets > Refresh`.
-4. `Tools > Quixo > Create/Repair Scenes`.
+3. Faire `Assets > Refresh`.
+4. Faire `Tools > Quixo > Create/Repair Scenes`.
 5. Ouvrir `Assets/Scenes/IntroVideoScene`.
-6. Play.
+6. Lancer Play.
 
-## Configurer Supabase
+La configuration Supabase est expliquee dans `unity/SUPABASE_SETUP.md`.
 
-Voir `unity/SUPABASE_SETUP.md`.
+## Contact
 
-Page GitHub Pages de reset password :
-
-`docs/reset-password/`
-
-Unity utilise seulement :
-
-- Project URL;
-- anon/publishable key.
-
-Ne jamais mettre de cle `service_role` dans Unity.
-
-## Build Windows
-
-1. Regenerer les scenes avec le Scene Builder.
-2. Verifier les Build Settings :
-   - `IntroVideoScene`
-   - `SplashScene`
-   - `AuthScene`
-   - `MenuScene`
-   - `GameplayScene`
-3. Build Windows x86_64.
-4. Lancer le `.exe`.
-
-## Online V1
-
-Apres la migration SQL de `unity/SUPABASE_SETUP.md`, deux comptes connectes peuvent :
-
-- voir la presence online/offline des amis;
-- inviter un ami en Quixo ou Qomet;
-- chercher un adversaire aleatoire;
-- jouer une partie online avec synchronisation des coups.
-
-La V1 online est client-authoritative. Une V2 devrait ajouter Supabase Realtime, RPC/Edge Functions pour valider les coups cote serveur, reconnexion, abandon, timer et classement.
+En cas de probleme urgent avec l'installation ou le lancement :
+[lm_bouzekri@gmail.com](mailto:lm_bouzekri@gmail.com)

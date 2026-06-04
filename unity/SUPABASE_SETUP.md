@@ -15,20 +15,35 @@ Ne jamais utiliser la cle `service_role` dans Unity.
 
 ## 2. Configurer les URLs Auth
 
-Dans `Authentication > Providers > Email`, activer `Confirm email` si le professeur veut verifier les emails.
+Dans `Authentication > Providers > Email`, activer obligatoirement `Confirm email`.
+Un compte doit confirmer son adresse avant de pouvoir ouvrir une session Unity.
 
 Dans `Authentication > URL Configuration` :
 
 - Site URL : `https://bouzekrimohamed.github.io/quixocomet`
-- Redirect URLs : `https://bouzekrimohamed.github.io/quixocomet/reset-password/`
+- Redirect URL : `https://bouzekrimohamed.github.io/quixocomet/reset-password/`
+- Redirect URL : `https://bouzekrimohamed.github.io/quixocomet/email-confirmed/`
 
-Dans `Authentication > Email Templates > Reset Password`, verifier que le lien de reset utilise une redirection autorisee.
+Dans `Authentication > Email Templates > Confirm Signup`, conserver un lien qui
+utilise `{{ .ConfirmationURL }}`. Unity envoie
+`https://bouzekrimohamed.github.io/quixocomet/email-confirmed/` dans le
+parametre `redirect_to` de la requete d'inscription. Apres validation, Supabase
+redirige donc vers cette page si elle figure bien dans les Redirect URLs.
 
-La page web statique est dans :
+Si le template Supabase personnalise ne respecte pas `redirect_to`, garder
+`{{ .ConfirmationURL }}` puis verifier que la destination finale autorisee est
+la page `email-confirmed`. Il ne faut pas construire manuellement un lien avec
+un token dans le HTML.
 
-`docs/reset-password/`
+Dans `Authentication > Email Templates > Reset Password`, verifier que le lien
+de reset utilise aussi une redirection autorisee.
 
-Elle utilise `@supabase/supabase-js@2` via CDN et `supabase.auth.updateUser({ password })`.
+Pages web statiques :
+
+- `docs/reset-password/` utilise `@supabase/supabase-js@2` via CDN et
+  `supabase.auth.updateUser({ password })`;
+- `docs/email-confirmed/` affiche la confirmation et renvoie vers la page de
+  telechargement.
 
 ## 3. Mettre la config dans Unity
 
@@ -42,6 +57,7 @@ Renseigner :
 public const string ProjectUrl = "https://your-project-ref.supabase.co";
 public const string AnonKey = "your-public-anon-key";
 public const string PasswordResetRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/reset-password/";
+public const string EmailConfirmationRedirectUrl = "https://bouzekrimohamed.github.io/quixocomet/email-confirmed/";
 ```
 
 La cle anon est publique cote client. Elle doit quand meme rester differente de la cle `service_role`, qui est interdite dans Unity.
@@ -175,12 +191,14 @@ Pour une V2 plus stricte, remplacer cette lecture publique par une RPC dediee qu
 2. Ouvrir `IntroVideoScene`.
 3. Play.
 4. Inscription avec email, mot de passe et username.
-5. Connexion avec email + mot de passe.
-6. Deconnexion.
-7. Connexion avec username + mot de passe.
-8. Cliquer `Mot de passe oublie` avec un email.
-9. Ouvrir le lien recu et changer le mot de passe.
-10. Tester les amis.
+5. Verifier que la connexion est refusee proprement avant confirmation.
+6. Ouvrir le lien recu et verifier la page `email-confirmed`.
+7. Connexion avec email + mot de passe.
+8. Deconnexion.
+9. Connexion avec username + mot de passe.
+10. Cliquer `Mot de passe oublie` avec un email.
+11. Ouvrir le lien recu et changer le mot de passe.
+12. Tester les amis.
 
 ## 8. Si Supabase n'est pas configure
 
