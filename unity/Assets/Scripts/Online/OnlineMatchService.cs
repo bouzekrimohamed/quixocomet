@@ -20,16 +20,27 @@ namespace QuixoUnity.Online
         // Idem pour les anciens online_matches non termines : on ignore au-dela de 5 min sans
         // mise a jour, pour eviter de retomber sur une partie zombie.
         private const double ActiveMatchFreshnessSeconds = 300.0;
+        // Invitations pending trop vieilles : on les ignore cote UI pour eviter les lignes fantomes.
+        private const double PendingInviteFreshnessSeconds = 86400.0;
         private const string MatchSelectWithTime = "id,game_kind,match_mode,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id,current_turn_id,current_turn_index,status,winner_id,winner_team,time_control_key,initial_seconds,increment_seconds,created_at,updated_at";
         private const string MatchSelectNoTime = "id,game_kind,match_mode,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id,current_turn_id,current_turn_index,status,winner_id,winner_team,created_at,updated_at";
         private const string MatchSelectLegacy = "id,game_kind,player1_id,player2_id,current_turn_id,status,winner_id,created_at,updated_at";
         private const string InviteSelectWithTime = "id,from_user_id,to_user_id,game_kind,status,match_id,time_control_key,initial_seconds,increment_seconds,created_at,updated_at";
         private const string InviteSelectLegacy = "id,from_user_id,to_user_id,game_kind,status,match_id,created_at,updated_at";
         private const string QueueSelectWithTime = "id,user_id,game_kind,status,match_id,time_control_key,initial_seconds,increment_seconds,created_at,updated_at";
+        // Fallback select sans les colonnes cadence : utilise si la migration SQL section 13
+        // n'a pas ete appliquee sur la base Supabase de l'utilisateur. Garde la compat 1v1
+        // hors cadence pour ne pas casser le matchmaking sur les anciennes bases.
+        private const string QueueSelectLegacy = "id,user_id,game_kind,status,match_id,created_at,updated_at";
         private const string LobbySelectWithTime = "id,lobby_code,game_kind,match_mode,host_user_id,status,match_id,time_control_key,initial_seconds,increment_seconds,created_at,updated_at";
 
         private Coroutine _matchmakingRoutine;
         private TurnTimerSettings.TimeControlOption _matchmakingTimeControl;
+        // Une fois qu'on a constate que le schema n'a pas les colonnes timer pour la queue,
+        // on garde un flag pour eviter de toujours faire deux requetes. Reset au demarrage
+        // de chaque session Unity (variable d'instance).
+        private bool _queueSchemaWithoutTime;
+        private bool _matchSchemaWithoutTime;
 
         public void SendInvite(string friendUserId, GameKind kind, Action<OnlineOperationResult> onComplete)
         {
@@ -119,11 +130,15 @@ namespace QuixoUnity.Online
         private IEnumerator MatchmakingBootstrapAndLoop(GameKind kind, Action<OnlineOperationResult> onMatched, Action<string> onStatus)
         {
             string gameKind = OnlineSessionTransit.GameKindName(kind);
-            Debug.Log($"[Matchmaking] Start user={SessionManager.UserId} game={gameKind}");
-            // 1. On annule toute ancienne ligne (waiting/matched) pour partir propre.
+            var timeControl = ActiveMatchmakingTimeControl();
+            Debug.Log($"[Matchmaking] Start user={SessionManager.UserId} game={gameKind} mode=OneVsOne time={timeControl.Key}");
+            // 1. On annule toute ancienne ligne (waiting/matched) pour partir propre. La nouvelle
+            //    cadence ecrasera celle d'une eventuelle session abandonnee.
             yield return CancelAllOwnQueuesRoutine(gameKind);
-            // 2. On (re)pose une ligne waiting toute fraiche : created_at = now, match_id = null.
+            // 2. On (re)pose une ligne waiting toute fraiche : created_at = now, match_id = null,
+            //    time_control_key = cadence courante.
             yield return EnsureFreshOwnQueueRoutine(gameKind);
+            Debug.Log($"[Matchmaking] Waiting queue user={SessionManager.UserId} game={gameKind} time={timeControl.Key}");
             yield return MatchmakingLoop(kind, onMatched, onStatus);
         }
 
@@ -261,37 +276,43 @@ namespace QuixoUnity.Online
         private IEnumerator SendInviteRoutine(string friendUserId, GameKind kind, Action<OnlineOperationResult> onComplete)
         {
             var timeControl = TurnTimerSettings.SelectedOption;
-            var payload = new MatchInviteCreateRequest
-            {
-                from_user_id = SessionManager.UserId,
-                to_user_id = friendUserId,
-                game_kind = OnlineSessionTransit.GameKindName(kind),
-                status = "pending",
-                time_control_key = timeControl.Key,
-                initial_seconds = timeControl.InitialSeconds,
-                increment_seconds = timeControl.IncrementSeconds
-            };
+            string gameKind = OnlineSessionTransit.GameKindName(kind);
+            Debug.Log($"[Invite] Creating invite to={friendUserId} game={gameKind} cadence={timeControl.Key}");
 
-            string url = $"{SupabaseSettings.Url}/rest/v1/match_invites";
             UnityWebRequest request = null;
-            yield return SupabaseRequestHelper.SendAuthorizedRequest(
-                () =>
-                {
-                    var created = CreateJsonRequest(url, "POST", JsonUtility.ToJson(payload));
-                    created.SetRequestHeader("Prefer", "return=representation");
-                    return created;
-                },
-                completed => request = completed);
+            yield return PostInviteRequest(friendUserId, gameKind, timeControl, withTime: true, completed => request = completed);
             using (request)
             {
-                if (!IsSuccess(request))
+                if (IsSuccess(request))
                 {
-                    onComplete?.Invoke(OnlineOperationResult.Fail(ParseError(request, "Invitation impossible.")));
+                    CompleteInviteCreate(request, onComplete);
                     yield break;
                 }
 
-                var invites = SupabaseJson.FromArray<MatchInviteDto>(request.downloadHandler.text);
-                onComplete?.Invoke(OnlineOperationResult.Ok("Invitation envoyee.", null, invites.Count > 0 ? invites[0] : null));
+                if (IsMissingTimeControlSchemaError(request))
+                {
+                    Debug.LogWarning("[Invite] Missing SQL migration for timer columns; retrying without cadence fields.");
+                    UnityWebRequest legacyRequest = null;
+                    yield return PostInviteRequest(friendUserId, gameKind, timeControl, withTime: false, completed => legacyRequest = completed);
+                    using (legacyRequest)
+                    {
+                        if (IsSuccess(legacyRequest))
+                        {
+                            CompleteInviteCreate(legacyRequest, onComplete);
+                            yield break;
+                        }
+
+                        string reason = ParseInviteError(legacyRequest, "Impossible d'envoyer l'invitation.");
+                        Debug.LogWarning($"[Invite] Failed reason={reason}");
+                        onComplete?.Invoke(OnlineOperationResult.Fail(reason));
+                    }
+
+                    yield break;
+                }
+
+                string error = ParseInviteError(request, "Impossible d'envoyer l'invitation.");
+                Debug.LogWarning($"[Invite] Failed reason={error}");
+                onComplete?.Invoke(OnlineOperationResult.Fail(error));
             }
         }
 
@@ -299,28 +320,78 @@ namespace QuixoUnity.Online
         {
             string userId = Escape(SessionManager.UserId);
             string url = $"{SupabaseSettings.Url}/rest/v1/match_invites?to_user_id=eq.{userId}&status=eq.pending&select={InviteSelectWithTime}&order=created_at.desc";
-            yield return FetchInvitesWithFallbackRoutine(url, $"{SupabaseSettings.Url}/rest/v1/match_invites?to_user_id=eq.{userId}&status=eq.pending&select={InviteSelectLegacy}&order=created_at.desc", onComplete);
+            List<MatchInviteDto> invites = null;
+            yield return FetchInvitesWithFallbackRoutine(
+                url,
+                $"{SupabaseSettings.Url}/rest/v1/match_invites?to_user_id=eq.{userId}&status=eq.pending&select={InviteSelectLegacy}&order=created_at.desc",
+                loaded => invites = loaded);
+            onComplete?.Invoke(FilterFreshPendingInvites(invites));
         }
 
         private IEnumerator LoadAcceptedSentInvitesRoutine(Action<List<MatchInviteDto>> onComplete)
         {
             string userId = Escape(SessionManager.UserId);
-            string url = $"{SupabaseSettings.Url}/rest/v1/match_invites?from_user_id=eq.{userId}&status=eq.accepted&match_id=not.is.null&select={InviteSelectWithTime}&order=updated_at.desc&limit=1";
-            yield return FetchInvitesWithFallbackRoutine(url, $"{SupabaseSettings.Url}/rest/v1/match_invites?from_user_id=eq.{userId}&status=eq.accepted&match_id=not.is.null&select={InviteSelectLegacy}&order=updated_at.desc&limit=1", onComplete);
+            string url = $"{SupabaseSettings.Url}/rest/v1/match_invites?from_user_id=eq.{userId}&status=eq.accepted&match_id=not.is.null&select={InviteSelectWithTime}&order=updated_at.desc&limit=3";
+            List<MatchInviteDto> invites = null;
+            yield return FetchInvitesWithFallbackRoutine(
+                url,
+                $"{SupabaseSettings.Url}/rest/v1/match_invites?from_user_id=eq.{userId}&status=eq.accepted&match_id=not.is.null&select={InviteSelectLegacy}&order=updated_at.desc&limit=3",
+                loaded => invites = loaded);
+
+            var valid = new List<MatchInviteDto>();
+            if (invites != null)
+            {
+                foreach (var invite in invites)
+                {
+                    if (invite == null || string.IsNullOrWhiteSpace(invite.match_id))
+                    {
+                        continue;
+                    }
+
+                    OnlineOperationResult matchResult = null;
+                    yield return FetchMatchRoutine(invite.match_id, result => matchResult = result);
+                    if (matchResult == null || !matchResult.Success || matchResult.Match == null)
+                    {
+                        continue;
+                    }
+
+                    if (!string.Equals(matchResult.Match.status, "active", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (!OnlineSessionTransit.IsValidForLocalPlayer(matchResult.Match, SessionManager.UserId))
+                    {
+                        continue;
+                    }
+
+                    valid.Add(invite);
+                }
+            }
+
+            onComplete?.Invoke(valid);
         }
 
         private IEnumerator AcceptInviteRoutine(MatchInviteDto invite, Action<OnlineOperationResult> onComplete)
         {
+            Debug.Log($"[Invite] Accepting invite id={invite.id} from={invite.from_user_id} game={invite.game_kind}");
             OnlineMatchDto match = null;
             yield return CreateMatchRoutine(invite.game_kind, invite.from_user_id, invite.to_user_id, TimeControlFromInvite(invite), created => match = created);
             if (match == null)
             {
+                Debug.LogWarning("[Invite] Failed reason=match creation rejected by Supabase");
                 onComplete?.Invoke(OnlineOperationResult.Fail("Creation du match impossible."));
                 yield break;
             }
 
+            Debug.Log($"[Invite] Created match id={match.id} p1={match.player1_id} p2={match.player2_id} turn={match.current_turn_id}");
             yield return UpdateInviteRoutine(invite.id, "accepted", match.id, result =>
             {
+                if (!result.Success)
+                {
+                    Debug.LogWarning($"[Invite] Failed reason=invite patch rejected ({result.Message})");
+                }
+
                 onComplete?.Invoke(result.Success ? OnlineOperationResult.Ok("Invitation acceptee.", match, invite) : result);
             });
         }
@@ -349,7 +420,7 @@ namespace QuixoUnity.Online
             {
                 onComplete?.Invoke(IsSuccess(request)
                     ? OnlineOperationResult.Ok("Invitation mise a jour.")
-                    : OnlineOperationResult.Fail(ParseError(request, "Mise a jour invitation impossible.")));
+                    : OnlineOperationResult.Fail(ParseInviteError(request, "Mise a jour invitation impossible.")));
             }
         }
 
@@ -795,42 +866,51 @@ namespace QuixoUnity.Online
                 yield break;
             }
 
-            // Heartbeat : on rafraichit updated_at pour que les autres ne nous considerent pas
-            // comme une ligne fantome. On NE TOUCHE PAS a created_at ici.
-            yield return UpsertOwnQueueRoutine(gameKind, "waiting", null, refreshCreatedAt: false);
-
-            // 1) Fallback : un match actif (recent) existe deja avec moi en participant.
-            OnlineMatchDto existing = null;
-            yield return FetchActiveMatchForLocalRoutine(gameKind, match => existing = match);
-            if (existing != null)
-            {
-                Debug.Log($"[Matchmaking] Matched queue match={existing.id} (existing active match found, p1={existing.player1_id} p2={existing.player2_id} turn={existing.current_turn_id})");
-                yield return UpsertOwnQueueRoutine(gameKind, "matched", existing.id, refreshCreatedAt: false);
-                onComplete?.Invoke(OnlineOperationResult.Ok("Adversaire trouve.", existing));
-                yield break;
-            }
-
-            // 2) Si ma queue est marquee matched, on suit le match -- mais SEULEMENT s'il est actif.
+            // 1) Si ma queue est deja matched avec un match actif, on entre directement.
+            //    On verifie AVANT toute ecriture pour eviter qu'un heartbeat n'efface l'etat
+            //    matched ecrit par l'autre client.
             MatchmakingQueueDto ownQueue = null;
             yield return FetchOwnQueueRoutine(gameKind, queue => ownQueue = queue);
-            if (ownQueue != null && ownQueue.status == "matched" && !string.IsNullOrWhiteSpace(ownQueue.match_id))
+            if (ownQueue != null && string.Equals(ownQueue.status, "matched", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(ownQueue.match_id))
             {
                 OnlineOperationResult matchResult = null;
                 yield return FetchMatchRoutine(ownQueue.match_id, result => matchResult = result);
                 if (matchResult != null && matchResult.Success && matchResult.Match != null
                     && string.Equals(matchResult.Match.status, "active", StringComparison.OrdinalIgnoreCase))
                 {
-                    Debug.Log($"[Matchmaking] Matched queue match={matchResult.Match.id} (own queue points to active match)");
+                    Debug.Log($"[Matchmaking] Matched with match={matchResult.Match.id} (own queue already points to active match, p1={matchResult.Match.player1_id} p2={matchResult.Match.player2_id})");
                     onComplete?.Invoke(OnlineOperationResult.Ok("Adversaire trouve.", matchResult.Match));
                     yield break;
                 }
 
-                // La queue pointait sur un match termine/annule : on nettoie.
+                // La queue pointait sur un match termine/annule : on remet en waiting.
                 Debug.LogWarning("[Matchmaking] Own queue points to non-active match; resetting to waiting.");
-                yield return UpsertOwnQueueRoutine(gameKind, "waiting", null, refreshCreatedAt: false);
+                yield return ResetOwnQueueToWaitingRoutine(gameKind);
                 ownQueue.status = "waiting";
                 ownQueue.match_id = null;
             }
+
+            // 2) Fallback : un match actif (recent) existe deja avec moi en participant
+            //    mais ma queue n'a pas encore ete PATCHee en matched. Le createur le fera ;
+            //    en attendant on entre directement dans le match.
+            OnlineMatchDto existing = null;
+            yield return FetchActiveMatchForLocalRoutine(gameKind, match => existing = match);
+            if (existing != null)
+            {
+                Debug.Log($"[Matchmaking] Matched with match={existing.id} (existing active match found via online_matches, p1={existing.player1_id} p2={existing.player2_id} turn={existing.current_turn_id})");
+                // Best-effort : on PATCHe notre row waiting en matched. Echec silencieux ok :
+                // si la row n'est pas waiting, le PATCH n'affecte aucune ligne.
+                yield return PatchOwnWaitingQueueToMatchedRoutine(gameKind, existing.id);
+                onComplete?.Invoke(OnlineOperationResult.Ok("Adversaire trouve.", existing));
+                yield break;
+            }
+
+            // 3) Heartbeat : on PATCHe uniquement updated_at sur la row encore en waiting.
+            //    On NE touche PAS au status ni au match_id : si l'autre client vient juste de
+            //    nous claim, le PATCH ne matche aucune ligne (status != waiting) et l'etat
+            //    matched est preserve.
+            yield return HeartbeatOwnWaitingQueueRoutine(gameKind);
 
             // 3) Chercher un adversaire VRAI : status=waiting, match_id null, updated_at recent.
             MatchmakingQueueDto opponentQueue = null;
@@ -876,18 +956,20 @@ namespace QuixoUnity.Online
             yield return CreateMatchRoutine(gameKind, player1Id, player2Id, ActiveMatchmakingTimeControl(), created => match = created);
             if (match == null)
             {
-                Debug.LogWarning("[Matchmaking] Refused invalid match creation: reason=server rejected POST online_matches");
-                yield return UpsertOwnQueueRoutine(gameKind, "waiting", null, refreshCreatedAt: false);
+                Debug.LogWarning("[Matchmaking] Failed reason=server rejected POST online_matches");
+                // On reste en waiting : si l'autre client a deja cree un match, fallback step 2
+                // (FetchActiveMatchForLocalRoutine) le rattrapera au prochain tour.
+                yield return ResetOwnQueueToWaitingRoutine(gameKind);
                 onComplete?.Invoke(OnlineOperationResult.Ok("Recherche d'un joueur..."));
                 yield break;
             }
 
             Debug.Log($"[Matchmaking] Created match={match.id} p1={match.player1_id} p2={match.player2_id} turn={match.current_turn_id}");
 
-            // Claim opponent + me en matched. Si le claim opponent echoue, le fallback step 1
+            // Claim opponent + me en matched. Si le claim opponent echoue, le fallback step 2
             // chez lui le rattrapera grace a FetchActiveMatchForLocalRoutine.
             yield return PatchQueueRoutine(opponentQueue.id, "matched", match.id, null);
-            yield return UpsertOwnQueueRoutine(gameKind, "matched", match.id, refreshCreatedAt: false);
+            yield return PatchOwnWaitingQueueToMatchedRoutine(gameKind, match.id);
 
             onComplete?.Invoke(OnlineOperationResult.Ok("Adversaire trouve.", match));
         }
@@ -988,30 +1070,96 @@ namespace QuixoUnity.Online
         {
             string userId = Escape(SessionManager.UserId);
             string sinceIso = Escape(IsoTimestamp(-ActiveMatchFreshnessSeconds));
-            string timeKey = Escape(ActiveMatchmakingTimeControl().Key);
-            string url = $"{SupabaseSettings.Url}/rest/v1/online_matches?status=eq.active&game_kind=eq.{Escape(gameKind)}&time_control_key=eq.{timeKey}&or=(player1_id.eq.{userId},player2_id.eq.{userId})&updated_at=gte.{sinceIso}&select={MatchSelectWithTime}&order=created_at.desc&limit=1";
-            UnityWebRequest request = null;
-            yield return SupabaseRequestHelper.SendAuthorizedRequest(
-                () => CreateJsonRequest(url, "GET", null),
-                completed => request = completed);
-            using (request)
+
+            // Si on sait deja que le schema match n'a pas les colonnes cadence, on saute
+            // direct au fallback sans filtrer la cadence. Sinon on tente d'abord la version
+            // moderne ; en cas d'erreur schema, on retombe sur le legacy.
+            if (!_matchSchemaWithoutTime)
             {
-                var rows = IsSuccess(request) ? SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text) : new List<OnlineMatchDto>();
+                string timeKey = Escape(ActiveMatchmakingTimeControl().Key);
+                string url = $"{SupabaseSettings.Url}/rest/v1/online_matches?status=eq.active&game_kind=eq.{Escape(gameKind)}&time_control_key=eq.{timeKey}&or=(player1_id.eq.{userId},player2_id.eq.{userId})&updated_at=gte.{sinceIso}&select={MatchSelectWithTime}&order=created_at.desc&limit=1";
+                UnityWebRequest request = null;
+                yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                    () => CreateJsonRequest(url, "GET", null),
+                    completed => request = completed);
+                using (request)
+                {
+                    if (IsSuccess(request))
+                    {
+                        var rows = SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text);
+                        onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                        yield break;
+                    }
+
+                    if (IsMissingTimeControlSchemaError(request))
+                    {
+                        Debug.LogWarning("[Matchmaking] online_matches sans colonnes cadence : fallback legacy active.");
+                        _matchSchemaWithoutTime = true;
+                    }
+                    else
+                    {
+                        // Erreur reseau / autre : pas de retry, on renvoie null silencieusement.
+                        onComplete?.Invoke(null);
+                        yield break;
+                    }
+                }
+            }
+
+            // Legacy : sans filtre cadence ni colonnes cadence dans le select.
+            string legacyUrl = $"{SupabaseSettings.Url}/rest/v1/online_matches?status=eq.active&game_kind=eq.{Escape(gameKind)}&or=(player1_id.eq.{userId},player2_id.eq.{userId})&updated_at=gte.{sinceIso}&select={MatchSelectNoTime}&order=created_at.desc&limit=1";
+            UnityWebRequest legacyRequest = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(legacyUrl, "GET", null),
+                completed => legacyRequest = completed);
+            using (legacyRequest)
+            {
+                var rows = IsSuccess(legacyRequest) ? SupabaseJson.FromArray<OnlineMatchDto>(legacyRequest.downloadHandler.text) : new List<OnlineMatchDto>();
                 onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
             }
         }
 
         private IEnumerator FetchOwnQueueRoutine(string gameKind, Action<MatchmakingQueueDto> onComplete)
         {
-            string timeKey = Escape(ActiveMatchmakingTimeControl().Key);
-            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}&time_control_key=eq.{timeKey}&status=in.(waiting,matched)&select={QueueSelectWithTime}&limit=1";
-            UnityWebRequest request = null;
-            yield return SupabaseRequestHelper.SendAuthorizedRequest(
-                () => CreateJsonRequest(url, "GET", null),
-                completed => request = completed);
-            using (request)
+            // Cas moderne : DB a les colonnes cadence -> on filtre dessus.
+            if (!_queueSchemaWithoutTime)
             {
-                var rows = IsSuccess(request) ? SupabaseJson.FromArray<MatchmakingQueueDto>(request.downloadHandler.text) : new List<MatchmakingQueueDto>();
+                string timeKey = Escape(ActiveMatchmakingTimeControl().Key);
+                string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}&time_control_key=eq.{timeKey}&status=in.(waiting,matched)&select={QueueSelectWithTime}&limit=1";
+                UnityWebRequest request = null;
+                yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                    () => CreateJsonRequest(url, "GET", null),
+                    completed => request = completed);
+                using (request)
+                {
+                    if (IsSuccess(request))
+                    {
+                        var rows = SupabaseJson.FromArray<MatchmakingQueueDto>(request.downloadHandler.text);
+                        onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                        yield break;
+                    }
+
+                    if (IsMissingTimeControlSchemaError(request))
+                    {
+                        Debug.LogWarning("[Matchmaking] matchmaking_queue sans colonnes cadence : fallback legacy active. Section 13 de SUPABASE_SETUP.md a executer pour avoir le filtrage par cadence.");
+                        _queueSchemaWithoutTime = true;
+                    }
+                    else
+                    {
+                        onComplete?.Invoke(null);
+                        yield break;
+                    }
+                }
+            }
+
+            // Legacy : pas de filtre cadence, select sans colonnes cadence.
+            string legacyUrl = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}&status=in.(waiting,matched)&select={QueueSelectLegacy}&limit=1";
+            UnityWebRequest legacyRequest = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(legacyUrl, "GET", null),
+                completed => legacyRequest = completed);
+            using (legacyRequest)
+            {
+                var rows = IsSuccess(legacyRequest) ? SupabaseJson.FromArray<MatchmakingQueueDto>(legacyRequest.downloadHandler.text) : new List<MatchmakingQueueDto>();
                 onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
             }
         }
@@ -1020,30 +1168,86 @@ namespace QuixoUnity.Online
         {
             // Anti-fantome : on exige une row waiting, match_id null, updated_at recent.
             string sinceIso = Escape(IsoTimestamp(-QueueFreshnessSeconds));
-            string timeKey = Escape(ActiveMatchmakingTimeControl().Key);
-            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?game_kind=eq.{Escape(gameKind)}&time_control_key=eq.{timeKey}&status=eq.waiting&user_id=neq.{Escape(SessionManager.UserId)}&match_id=is.null&updated_at=gte.{sinceIso}&select={QueueSelectWithTime}&order=created_at.asc&limit=1";
-            UnityWebRequest request = null;
-            yield return SupabaseRequestHelper.SendAuthorizedRequest(
-                () => CreateJsonRequest(url, "GET", null),
-                completed => request = completed);
-            using (request)
+            string baseFilter = $"game_kind=eq.{Escape(gameKind)}&status=eq.waiting&user_id=neq.{Escape(SessionManager.UserId)}&match_id=is.null&updated_at=gte.{sinceIso}";
+
+            if (!_queueSchemaWithoutTime)
             {
-                var rows = IsSuccess(request) ? SupabaseJson.FromArray<MatchmakingQueueDto>(request.downloadHandler.text) : new List<MatchmakingQueueDto>();
+                string timeKey = Escape(ActiveMatchmakingTimeControl().Key);
+                string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?{baseFilter}&time_control_key=eq.{timeKey}&select={QueueSelectWithTime}&order=created_at.asc&limit=1";
+                UnityWebRequest request = null;
+                yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                    () => CreateJsonRequest(url, "GET", null),
+                    completed => request = completed);
+                using (request)
+                {
+                    if (IsSuccess(request))
+                    {
+                        var rows = SupabaseJson.FromArray<MatchmakingQueueDto>(request.downloadHandler.text);
+                        onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                        yield break;
+                    }
+
+                    if (IsMissingTimeControlSchemaError(request))
+                    {
+                        _queueSchemaWithoutTime = true;
+                    }
+                    else
+                    {
+                        onComplete?.Invoke(null);
+                        yield break;
+                    }
+                }
+            }
+
+            // Legacy : sans filtre cadence (les anciennes bases matchaient sans cadence,
+            // on garde la compat). Documente dans SUPABASE_SETUP.md section 13.
+            string legacyUrl = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?{baseFilter}&select={QueueSelectLegacy}&order=created_at.asc&limit=1";
+            UnityWebRequest legacyRequest = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(legacyUrl, "GET", null),
+                completed => legacyRequest = completed);
+            using (legacyRequest)
+            {
+                var rows = IsSuccess(legacyRequest) ? SupabaseJson.FromArray<MatchmakingQueueDto>(legacyRequest.downloadHandler.text) : new List<MatchmakingQueueDto>();
                 onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
             }
         }
 
         private IEnumerator FetchQueueByIdRoutine(string queueId, Action<MatchmakingQueueDto> onComplete)
         {
-            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?id=eq.{Escape(queueId)}&select={QueueSelectWithTime}&limit=1";
+            string select = _queueSchemaWithoutTime ? QueueSelectLegacy : QueueSelectWithTime;
+            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?id=eq.{Escape(queueId)}&select={select}&limit=1";
             UnityWebRequest request = null;
             yield return SupabaseRequestHelper.SendAuthorizedRequest(
                 () => CreateJsonRequest(url, "GET", null),
                 completed => request = completed);
             using (request)
             {
-                var rows = IsSuccess(request) ? SupabaseJson.FromArray<MatchmakingQueueDto>(request.downloadHandler.text) : new List<MatchmakingQueueDto>();
-                onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                if (IsSuccess(request))
+                {
+                    var rows = SupabaseJson.FromArray<MatchmakingQueueDto>(request.downloadHandler.text);
+                    onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                    yield break;
+                }
+
+                if (IsMissingTimeControlSchemaError(request))
+                {
+                    _queueSchemaWithoutTime = true;
+                    string legacyUrl = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?id=eq.{Escape(queueId)}&select={QueueSelectLegacy}&limit=1";
+                    UnityWebRequest legacyRequest = null;
+                    yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                        () => CreateJsonRequest(legacyUrl, "GET", null),
+                        completed => legacyRequest = completed);
+                    using (legacyRequest)
+                    {
+                        var rows = IsSuccess(legacyRequest) ? SupabaseJson.FromArray<MatchmakingQueueDto>(legacyRequest.downloadHandler.text) : new List<MatchmakingQueueDto>();
+                        onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                    }
+
+                    yield break;
+                }
+
+                onComplete?.Invoke(null);
             }
         }
 
@@ -1062,9 +1266,9 @@ namespace QuixoUnity.Online
                 }
 
                 string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
-                string lower = body.ToLowerInvariant();
-                if (!lower.Contains("time_control_key") && !lower.Contains("initial_seconds") && !lower.Contains("increment_seconds"))
+                if (!IsMissingTimeControlSchemaError(request))
                 {
+                    Debug.LogWarning($"[Invite] Load invites failed: {ParseInviteError(request, "Chargement invitations impossible.")}");
                     onComplete?.Invoke(new List<MatchInviteDto>());
                     yield break;
                 }
@@ -1076,6 +1280,11 @@ namespace QuixoUnity.Online
                 completed => fallbackRequest = completed);
             using (fallbackRequest)
             {
+                if (!IsSuccess(fallbackRequest))
+                {
+                    Debug.LogWarning($"[Invite] Load invites legacy failed: {ParseInviteError(fallbackRequest, "Chargement invitations impossible.")}");
+                }
+
                 onComplete?.Invoke(IsSuccess(fallbackRequest)
                     ? SupabaseJson.FromArray<MatchInviteDto>(fallbackRequest.downloadHandler.text)
                     : new List<MatchInviteDto>());
@@ -1109,14 +1318,74 @@ namespace QuixoUnity.Online
         private IEnumerator UpsertOwnQueueRoutine(string gameKind, string status, string matchId, bool refreshCreatedAt)
         {
             string nowIso = DateTime.UtcNow.ToString("o");
+            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?on_conflict=user_id,game_kind";
+
+            // Premier essai : avec cadence si on n'est pas deja en mode legacy.
+            if (!_queueSchemaWithoutTime)
+            {
+                string modernJson = BuildQueueUpsertJson(gameKind, status, matchId, refreshCreatedAt, nowIso, withTime: true);
+                UnityWebRequest request = null;
+                yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                    () =>
+                    {
+                        var created = CreateJsonRequest(url, "POST", modernJson);
+                        created.SetRequestHeader("Prefer", "resolution=merge-duplicates,return=minimal");
+                        return created;
+                    },
+                    completed => request = completed);
+                using (request)
+                {
+                    if (IsSuccess(request))
+                    {
+                        yield break;
+                    }
+
+                    if (IsMissingTimeControlSchemaError(request))
+                    {
+                        Debug.LogWarning("[Matchmaking] matchmaking_queue sans colonnes cadence : fallback legacy upsert. Section 13 de SUPABASE_SETUP.md a executer pour activer le filtrage par cadence.");
+                        _queueSchemaWithoutTime = true;
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[Matchmaking] Failed reason={ParseError(request, "Upsert matchmaking_queue echoue.")}");
+                        yield break;
+                    }
+                }
+            }
+
+            // Fallback : on retente sans les colonnes cadence pour ne pas bloquer les anciennes bases.
+            string legacyJson = BuildQueueUpsertJson(gameKind, status, matchId, refreshCreatedAt, nowIso, withTime: false);
+            UnityWebRequest legacyRequest = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", legacyJson);
+                    created.SetRequestHeader("Prefer", "resolution=merge-duplicates,return=minimal");
+                    return created;
+                },
+                completed => legacyRequest = completed);
+            using (legacyRequest)
+            {
+                if (!IsSuccess(legacyRequest))
+                {
+                    Debug.LogWarning($"[Matchmaking] Failed reason={ParseError(legacyRequest, "Upsert matchmaking_queue (legacy) echoue.")}");
+                }
+            }
+        }
+
+        private string BuildQueueUpsertJson(string gameKind, string status, string matchId, bool refreshCreatedAt, string nowIso, bool withTime)
+        {
             var sb = new StringBuilder(256);
             sb.Append('{');
             sb.Append("\"user_id\":\"").Append(EscapeJson(SessionManager.UserId)).Append("\",");
             sb.Append("\"game_kind\":\"").Append(EscapeJson(gameKind)).Append("\",");
-            var timeControl = ActiveMatchmakingTimeControl();
-            sb.Append("\"time_control_key\":\"").Append(EscapeJson(timeControl.Key)).Append("\",");
-            sb.Append("\"initial_seconds\":").Append(timeControl.InitialSeconds).Append(',');
-            sb.Append("\"increment_seconds\":").Append(timeControl.IncrementSeconds).Append(',');
+            if (withTime)
+            {
+                var timeControl = ActiveMatchmakingTimeControl();
+                sb.Append("\"time_control_key\":\"").Append(EscapeJson(timeControl.Key)).Append("\",");
+                sb.Append("\"initial_seconds\":").Append(timeControl.InitialSeconds).Append(',');
+                sb.Append("\"increment_seconds\":").Append(timeControl.IncrementSeconds).Append(',');
+            }
             sb.Append("\"status\":\"").Append(EscapeJson(status)).Append("\",");
             sb.Append("\"updated_at\":\"").Append(nowIso).Append('\"');
             if (refreshCreatedAt)
@@ -1133,15 +1402,72 @@ namespace QuixoUnity.Online
                 sb.Append('\"').Append(EscapeJson(matchId)).Append('\"');
             }
             sb.Append('}');
-            string json = sb.ToString();
+            return sb.ToString();
+        }
 
-            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?on_conflict=user_id,game_kind";
+        // Heartbeat sur la row encore en waiting : on PATCHe seulement updated_at.
+        // Si l'autre client vient de nous claim (status='matched'), le filtre status=eq.waiting
+        // ne matche aucune ligne et le PATCH est un no-op : l'etat matched est preserve.
+        private IEnumerator HeartbeatOwnWaitingQueueRoutine(string gameKind)
+        {
+            string nowIso = DateTime.UtcNow.ToString("o");
+            string json = "{\"updated_at\":\"" + EscapeJson(nowIso) + "\"}";
+            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}&status=eq.waiting";
             UnityWebRequest request = null;
             yield return SupabaseRequestHelper.SendAuthorizedRequest(
                 () =>
                 {
-                    var created = CreateJsonRequest(url, "POST", json);
-                    created.SetRequestHeader("Prefer", "resolution=merge-duplicates,return=minimal");
+                    var created = CreateJsonRequest(url, "PATCH", json);
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            request?.Dispose();
+        }
+
+        // Passe ma row waiting -> matched sans toucher au time_control_key existant.
+        // No-op silencieux si la row n'est plus waiting (ex : un autre client l'a annulee).
+        private IEnumerator PatchOwnWaitingQueueToMatchedRoutine(string gameKind, string matchId)
+        {
+            if (string.IsNullOrWhiteSpace(matchId))
+            {
+                yield break;
+            }
+
+            string nowIso = DateTime.UtcNow.ToString("o");
+            var sb = new StringBuilder(128);
+            sb.Append('{');
+            sb.Append("\"status\":\"matched\",");
+            sb.Append("\"match_id\":\"").Append(EscapeJson(matchId)).Append("\",");
+            sb.Append("\"updated_at\":\"").Append(EscapeJson(nowIso)).Append('\"');
+            sb.Append('}');
+            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}&status=eq.waiting";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "PATCH", sb.ToString());
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            request?.Dispose();
+        }
+
+        // Remet ma row matched -> waiting (apres avoir constate que le match cible est
+        // termine/annule, ou que le POST online_matches a echoue). On n'utilise pas l'upsert
+        // pour ne pas reecrire created_at/cadence si la row existe deja.
+        private IEnumerator ResetOwnQueueToWaitingRoutine(string gameKind)
+        {
+            string nowIso = DateTime.UtcNow.ToString("o");
+            string json = "{\"status\":\"waiting\",\"match_id\":null,\"updated_at\":\"" + EscapeJson(nowIso) + "\"}";
+            string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "PATCH", json);
+                    created.SetRequestHeader("Prefer", "return=minimal");
                     return created;
                 },
                 completed => request = completed);
@@ -1200,6 +1526,8 @@ namespace QuixoUnity.Online
         private IEnumerator CancelMatchmakingRoutine(GameKind kind, Action<OnlineOperationResult> onComplete)
         {
             string gameKind = OnlineSessionTransit.GameKindName(kind);
+            // On annule UNIQUEMENT les rows waiting : on ne touche pas a une row matched dont
+            // le match peut encore etre actif (l'autre client est peut-etre dans GameplayScene).
             string json = "{\"status\":\"cancelled\",\"updated_at\":\"" + DateTime.UtcNow.ToString("o") + "\"}";
             string url = $"{SupabaseSettings.Url}/rest/v1/matchmaking_queue?user_id=eq.{Escape(SessionManager.UserId)}&game_kind=eq.{Escape(gameKind)}&status=eq.waiting";
             UnityWebRequest request = null;
@@ -1213,9 +1541,17 @@ namespace QuixoUnity.Online
                 completed => request = completed);
             using (request)
             {
-                onComplete?.Invoke(IsSuccess(request)
-                    ? OnlineOperationResult.Ok("Recherche annulee.")
-                    : OnlineOperationResult.Fail(ParseError(request, "Annulation impossible.")));
+                if (IsSuccess(request))
+                {
+                    Debug.Log($"[Matchmaking] Cancelled queue user={SessionManager.UserId} game={gameKind}");
+                    onComplete?.Invoke(OnlineOperationResult.Ok("Recherche annulee."));
+                }
+                else
+                {
+                    string reason = ParseError(request, "Annulation impossible.");
+                    Debug.LogWarning($"[Matchmaking] Failed reason=cancel rejected ({reason})");
+                    onComplete?.Invoke(OnlineOperationResult.Fail(reason));
+                }
             }
         }
 
@@ -1224,37 +1560,45 @@ namespace QuixoUnity.Online
             timeControl ??= TurnTimerSettings.SelectedOption;
             if (!ValidateMatchEndpoints(gameKind, player1Id, player2Id, out string validationError))
             {
-                Debug.LogWarning($"[Matchmaking] Refused invalid match creation: reason={validationError} (gameKind={gameKind} p1={player1Id} p2={player2Id})");
+                Debug.LogWarning($"[Invite] Refused invalid match creation: reason={validationError} (gameKind={gameKind} p1={player1Id} p2={player2Id})");
                 onComplete?.Invoke(null);
                 yield break;
             }
 
-            var payload = new OnlineMatchCreateRequest
-            {
-                game_kind = gameKind,
-                player1_id = player1Id,
-                player2_id = player2Id,
-                current_turn_id = player1Id,
-                status = "active",
-                time_control_key = timeControl.Key,
-                initial_seconds = timeControl.InitialSeconds,
-                increment_seconds = timeControl.IncrementSeconds
-            };
-
-            string url = $"{SupabaseSettings.Url}/rest/v1/online_matches";
             UnityWebRequest request = null;
-            yield return SupabaseRequestHelper.SendAuthorizedRequest(
-                () =>
-                {
-                    var created = CreateJsonRequest(url, "POST", JsonUtility.ToJson(payload));
-                    created.SetRequestHeader("Prefer", "return=representation");
-                    return created;
-                },
-                completed => request = completed);
+            yield return PostMatchRequest(gameKind, player1Id, player2Id, timeControl, withTime: true, completed => request = completed);
             using (request)
             {
-                var rows = IsSuccess(request) ? SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text) : new List<OnlineMatchDto>();
-                onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                if (IsSuccess(request))
+                {
+                    var rows = SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text);
+                    onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                    yield break;
+                }
+
+                if (IsMissingTimeControlSchemaError(request))
+                {
+                    Debug.LogWarning("[Invite] Missing SQL migration for timer columns; creating match without cadence fields.");
+                    UnityWebRequest legacyRequest = null;
+                    yield return PostMatchRequest(gameKind, player1Id, player2Id, timeControl, withTime: false, completed => legacyRequest = completed);
+                    using (legacyRequest)
+                    {
+                        var rows = IsSuccess(legacyRequest)
+                            ? SupabaseJson.FromArray<OnlineMatchDto>(legacyRequest.downloadHandler.text)
+                            : new List<OnlineMatchDto>();
+                        if (rows.Count == 0 && legacyRequest != null)
+                        {
+                            Debug.LogWarning($"[Invite] Failed reason={ParseInviteError(legacyRequest, "Creation du match impossible.")}");
+                        }
+
+                        onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
+                    }
+
+                    yield break;
+                }
+
+                Debug.LogWarning($"[Invite] Failed reason={ParseInviteError(request, "Creation du match impossible.")}");
+                onComplete?.Invoke(null);
             }
         }
 
@@ -1563,6 +1907,134 @@ namespace QuixoUnity.Online
         private static string EscapeJson(string value)
         {
             return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"");
+        }
+
+        private IEnumerator PostInviteRequest(string friendUserId, string gameKind, TurnTimerSettings.TimeControlOption timeControl, bool withTime, Action<UnityWebRequest> onComplete)
+        {
+            string json = withTime
+                ? JsonUtility.ToJson(new MatchInviteCreateRequest
+                {
+                    from_user_id = SessionManager.UserId,
+                    to_user_id = friendUserId,
+                    game_kind = gameKind,
+                    status = "pending",
+                    time_control_key = timeControl.Key,
+                    initial_seconds = timeControl.InitialSeconds,
+                    increment_seconds = timeControl.IncrementSeconds
+                })
+                : "{"
+                    + "\"from_user_id\":\"" + EscapeJson(SessionManager.UserId) + "\","
+                    + "\"to_user_id\":\"" + EscapeJson(friendUserId) + "\","
+                    + "\"game_kind\":\"" + EscapeJson(gameKind) + "\","
+                    + "\"status\":\"pending\""
+                    + "}";
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/match_invites";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", json);
+                    created.SetRequestHeader("Prefer", "return=representation");
+                    return created;
+                },
+                completed => request = completed);
+            onComplete?.Invoke(request);
+        }
+
+        private IEnumerator PostMatchRequest(string gameKind, string player1Id, string player2Id, TurnTimerSettings.TimeControlOption timeControl, bool withTime, Action<UnityWebRequest> onComplete)
+        {
+            string json = withTime
+                ? JsonUtility.ToJson(new OnlineMatchCreateRequest
+                {
+                    game_kind = gameKind,
+                    player1_id = player1Id,
+                    player2_id = player2Id,
+                    current_turn_id = player1Id,
+                    status = "active",
+                    time_control_key = timeControl.Key,
+                    initial_seconds = timeControl.InitialSeconds,
+                    increment_seconds = timeControl.IncrementSeconds
+                })
+                : "{"
+                    + "\"game_kind\":\"" + EscapeJson(gameKind) + "\","
+                    + "\"player1_id\":\"" + EscapeJson(player1Id) + "\","
+                    + "\"player2_id\":\"" + EscapeJson(player2Id) + "\","
+                    + "\"current_turn_id\":\"" + EscapeJson(player1Id) + "\","
+                    + "\"status\":\"active\""
+                    + "}";
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_matches";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", json);
+                    created.SetRequestHeader("Prefer", "return=representation");
+                    return created;
+                },
+                completed => request = completed);
+            onComplete?.Invoke(request);
+        }
+
+        private static void CompleteInviteCreate(UnityWebRequest request, Action<OnlineOperationResult> onComplete)
+        {
+            var invites = SupabaseJson.FromArray<MatchInviteDto>(request.downloadHandler.text);
+            var created = invites.Count > 0 ? invites[0] : null;
+            Debug.Log($"[Invite] Created invite id={created?.id ?? "(unknown)"}");
+            onComplete?.Invoke(OnlineOperationResult.Ok("Invitation envoyee.", null, created));
+        }
+
+        private static List<MatchInviteDto> FilterFreshPendingInvites(List<MatchInviteDto> invites)
+        {
+            var filtered = new List<MatchInviteDto>();
+            if (invites == null)
+            {
+                return filtered;
+            }
+
+            foreach (var invite in invites)
+            {
+                if (invite == null || invite.status != "pending")
+                {
+                    continue;
+                }
+
+                if (!IsTimestampFresh(invite.created_at, PendingInviteFreshnessSeconds))
+                {
+                    continue;
+                }
+
+                filtered.Add(invite);
+            }
+
+            return filtered;
+        }
+
+        private static bool IsMissingTimeControlSchemaError(UnityWebRequest request)
+        {
+            if (request == null)
+            {
+                return false;
+            }
+
+            string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+            string lower = body.ToLowerInvariant();
+            return lower.Contains("time_control_key")
+                || lower.Contains("initial_seconds")
+                || lower.Contains("increment_seconds")
+                || lower.Contains("pgrst204")
+                || (lower.Contains("column") && lower.Contains("does not exist") && lower.Contains("time"));
+        }
+
+        private static string ParseInviteError(UnityWebRequest request, string fallback)
+        {
+            if (IsMissingTimeControlSchemaError(request))
+            {
+                return "Migration Supabase timer manquante. Executez le SQL documente dans SUPABASE_SETUP.md (section 13).";
+            }
+
+            return ParseError(request, fallback);
         }
     }
 }

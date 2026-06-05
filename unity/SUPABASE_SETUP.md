@@ -629,6 +629,57 @@ create table if not exists public.online_lobby_players (
 alter table public.online_lobbies enable row level security;
 alter table public.online_lobby_players enable row level security;
 
+-- Note: pour eviter la recursion RLS entre online_lobbies et online_lobby_players,
+-- on utilise des fonctions SECURITY DEFINER. Voir section 14 pour le detail.
+
+create or replace function public.is_lobby_participant(p_lobby_id uuid, p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.online_lobby_players
+    where lobby_id = p_lobby_id
+      and user_id = p_user_id
+  );
+$$;
+
+create or replace function public.lobby_status_of(p_lobby_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select status
+  from public.online_lobbies
+  where id = p_lobby_id
+  limit 1;
+$$;
+
+create or replace function public.lobby_host_of(p_lobby_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select host_user_id
+  from public.online_lobbies
+  where id = p_lobby_id
+  limit 1;
+$$;
+
+revoke all on function public.is_lobby_participant(uuid, uuid) from public;
+revoke all on function public.lobby_status_of(uuid) from public;
+revoke all on function public.lobby_host_of(uuid) from public;
+grant execute on function public.is_lobby_participant(uuid, uuid) to authenticated;
+grant execute on function public.lobby_status_of(uuid) to authenticated;
+grant execute on function public.lobby_host_of(uuid) to authenticated;
+
 drop policy if exists "online_lobbies_select_joinable" on public.online_lobbies;
 drop policy if exists "online_lobbies_insert_host" on public.online_lobbies;
 drop policy if exists "online_lobbies_update_host" on public.online_lobbies;
@@ -638,14 +689,9 @@ on public.online_lobbies
 for select
 to authenticated
 using (
-  status = 'lobby'
-  or host_user_id = auth.uid()
-  or exists (
-    select 1
-    from public.online_lobby_players lp
-    where lp.lobby_id = online_lobbies.id
-      and lp.user_id = auth.uid()
-  )
+  host_user_id = auth.uid()
+  or status = 'lobby'
+  or public.is_lobby_participant(id, auth.uid())
 );
 
 create policy "online_lobbies_insert_host"
@@ -664,13 +710,11 @@ on public.online_lobbies
 for update
 to authenticated
 using (auth.uid() = host_user_id)
-with check (
-  auth.uid() = host_user_id
-  and status in ('started', 'cancelled')
-);
+with check (auth.uid() = host_user_id);
 
 drop policy if exists "online_lobby_players_select_lobby" on public.online_lobby_players;
 drop policy if exists "online_lobby_players_insert_self" on public.online_lobby_players;
+drop policy if exists "online_lobby_players_update_self" on public.online_lobby_players;
 drop policy if exists "online_lobby_players_delete_self" on public.online_lobby_players;
 
 create policy "online_lobby_players_select_lobby"
@@ -678,12 +722,9 @@ on public.online_lobby_players
 for select
 to authenticated
 using (
-  exists (
-    select 1
-    from public.online_lobbies l
-    where l.id = online_lobby_players.lobby_id
-      and l.status in ('lobby', 'started')
-  )
+  user_id = auth.uid()
+  or public.lobby_host_of(lobby_id) = auth.uid()
+  or public.is_lobby_participant(lobby_id, auth.uid())
 );
 
 create policy "online_lobby_players_insert_self"
@@ -692,19 +733,24 @@ for insert
 to authenticated
 with check (
   auth.uid() = user_id
-  and exists (
-    select 1
-    from public.online_lobbies l
-    where l.id = lobby_id
-      and l.status = 'lobby'
-  )
+  and public.lobby_status_of(lobby_id) = 'lobby'
 );
+
+create policy "online_lobby_players_update_self"
+on public.online_lobby_players
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
 
 create policy "online_lobby_players_delete_self"
 on public.online_lobby_players
 for delete
 to authenticated
-using (auth.uid() = user_id);
+using (
+  auth.uid() = user_id
+  or public.lobby_host_of(lobby_id) = auth.uid()
+);
 
 drop policy if exists "online_matches_select_participants" on public.online_matches;
 drop policy if exists "online_matches_insert_participant" on public.online_matches;
@@ -1052,7 +1098,14 @@ l'increment ajoute apres chaque coup valide. `Sans limite` correspond a `0+0`.
 
 ### Migration SQL pour une base deja existante
 
-Executer ce bloc si les tables online existaient deja avant cette version :
+Executer ce bloc si les tables online existaient deja avant cette version.
+**Obligatoire** si :
+
+- les invitations entre amis echouent avec `column time_control_key does not
+  exist`, `PGRST204` ou `400 Bad Request`,
+- ou si le matchmaking aleatoire ne trouve jamais d'adversaire (deux clients
+  restent "Recherche d'un joueur..." indefiniment) -- la Console Unity loggue
+  alors `[Matchmaking] Failed reason=Migration Supabase timer manquante`.
 
 ```sql
 alter table public.match_invites
@@ -1079,8 +1132,11 @@ alter table public.online_lobbies
 ### Comportement Unity
 
 - En local, les deux joueurs partagent la cadence choisie dans le menu.
-- En invitation ami, l'invitant choisit la cadence. Le match cree au moment de
-  l'acceptation reprend cette cadence.
+- En invitation ami, l'invitant choisit la cadence (menu principal). Le match
+  cree au moment de l'acceptation reprend cette cadence. Si la migration SQL
+  n'est pas encore appliquee, Unity retente sans les champs timer pour ne pas
+  bloquer l'invitation ; la cadence affichee utilisera alors le fallback local
+  (`5+3` ou `Sans limite`).
 - En matchmaking aleatoire, la file d'attente filtre aussi
   `time_control_key` : deux joueurs ne matchent ensemble que s'ils cherchent la
   meme cadence.
@@ -1094,3 +1150,198 @@ alter table public.online_lobbies
 Aucune policy RLS supplementaire n'est necessaire : les colonnes de cadence
 sont inserees ou lues avec les memes droits que les invitations, queues,
 salons et matchs. Aucune cle `service_role` n'est ajoutee.
+
+## 14. Correction RLS anti-recursion online_lobbies
+
+**Symptome :** quand un joueur cree ou rejoint un salon 2v2, l'API Supabase
+repond par `infinite recursion detected in policy for relation
+"online_lobbies"` (HTTP 500). Unity affiche alors un message d'erreur dans le
+panneau salon.
+
+### Cause
+
+Les policies originales etaient mutuellement recursives :
+
+- `online_lobbies` (select) lisait `online_lobby_players` via `exists (... from
+  online_lobby_players ...)` pour autoriser les participants.
+- `online_lobby_players` (select / insert) lisait `online_lobbies` via `exists
+  (... from online_lobbies ...)` pour verifier le status du salon.
+
+Lorsqu'on lit l'une, Postgres evalue la policy qui lit l'autre, qui re-evalue
+la policy d'origine, et ainsi de suite -> recursion infinie.
+
+### Solution
+
+On casse le cycle avec des fonctions `SECURITY DEFINER` qui lisent les tables
+en contournant RLS. Les fonctions sont stables, ne renvoient qu'un booleen /
+texte, et sont declarees avec `set search_path = public` pour eviter les
+injections via le `search_path` du caller.
+
+### SQL idempotent a executer
+
+Apres la migration de la section 13, executer ce bloc dans le SQL Editor
+Supabase. Il est idempotent : `create or replace` pour les fonctions, `drop
+policy if exists` pour les policies, donc rejouable sans erreur.
+
+```sql
+-- 1. Fonctions SECURITY DEFINER qui contournent RLS pour eviter la recursion.
+create or replace function public.is_lobby_participant(p_lobby_id uuid, p_user_id uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (
+    select 1
+    from public.online_lobby_players
+    where lobby_id = p_lobby_id
+      and user_id = p_user_id
+  );
+$$;
+
+create or replace function public.lobby_status_of(p_lobby_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select status
+  from public.online_lobbies
+  where id = p_lobby_id
+  limit 1;
+$$;
+
+create or replace function public.lobby_host_of(p_lobby_id uuid)
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select host_user_id
+  from public.online_lobbies
+  where id = p_lobby_id
+  limit 1;
+$$;
+
+-- On donne le droit d'appeler ces fonctions aux utilisateurs authentifies.
+revoke all on function public.is_lobby_participant(uuid, uuid) from public;
+revoke all on function public.lobby_status_of(uuid) from public;
+revoke all on function public.lobby_host_of(uuid) from public;
+grant execute on function public.is_lobby_participant(uuid, uuid) to authenticated;
+grant execute on function public.lobby_status_of(uuid) to authenticated;
+grant execute on function public.lobby_host_of(uuid) to authenticated;
+
+-- 2. On supprime les anciennes policies recursives.
+drop policy if exists "online_lobbies_select_joinable" on public.online_lobbies;
+drop policy if exists "online_lobbies_insert_host" on public.online_lobbies;
+drop policy if exists "online_lobbies_update_host" on public.online_lobbies;
+drop policy if exists "online_lobbies_delete_host" on public.online_lobbies;
+drop policy if exists "online_lobby_players_select_lobby" on public.online_lobby_players;
+drop policy if exists "online_lobby_players_insert_self" on public.online_lobby_players;
+drop policy if exists "online_lobby_players_delete_self" on public.online_lobby_players;
+drop policy if exists "online_lobby_players_update_self" on public.online_lobby_players;
+
+-- 3. Nouvelles policies online_lobbies (non recursives, utilisent la fonction
+--    is_lobby_participant qui contourne RLS).
+create policy "online_lobbies_select_joinable"
+on public.online_lobbies
+for select
+to authenticated
+using (
+  -- Le salon est visible si : je suis l'hote, OU il est encore en lobby (pour
+  -- pouvoir le rejoindre par code), OU je suis deja participant (verifie via
+  -- la fonction SECURITY DEFINER qui ne re-declenche pas la policy).
+  host_user_id = auth.uid()
+  or status = 'lobby'
+  or public.is_lobby_participant(id, auth.uid())
+);
+
+create policy "online_lobbies_insert_host"
+on public.online_lobbies
+for insert
+to authenticated
+with check (
+  auth.uid() = host_user_id
+  and game_kind = 'Quixo'
+  and match_mode = 'Team2v2'
+  and status = 'lobby'
+);
+
+create policy "online_lobbies_update_host"
+on public.online_lobbies
+for update
+to authenticated
+using (auth.uid() = host_user_id)
+with check (auth.uid() = host_user_id);
+
+-- 4. Nouvelles policies online_lobby_players (non recursives, utilisent les
+--    fonctions SECURITY DEFINER pour lire online_lobbies sans declencher sa
+--    policy).
+create policy "online_lobby_players_select_lobby"
+on public.online_lobby_players
+for select
+to authenticated
+using (
+  -- Je vois ma propre ligne, ou toutes les lignes d'un salon dont je suis
+  -- deja participant, ou toutes les lignes d'un salon que j'ai cree.
+  user_id = auth.uid()
+  or public.lobby_host_of(lobby_id) = auth.uid()
+  or public.is_lobby_participant(lobby_id, auth.uid())
+);
+
+create policy "online_lobby_players_insert_self"
+on public.online_lobby_players
+for insert
+to authenticated
+with check (
+  -- Je m'ajoute moi-meme dans un salon encore ouvert.
+  auth.uid() = user_id
+  and public.lobby_status_of(lobby_id) = 'lobby'
+);
+
+create policy "online_lobby_players_update_self"
+on public.online_lobby_players
+for update
+to authenticated
+using (auth.uid() = user_id)
+with check (auth.uid() = user_id);
+
+create policy "online_lobby_players_delete_self"
+on public.online_lobby_players
+for delete
+to authenticated
+using (
+  auth.uid() = user_id
+  or public.lobby_host_of(lobby_id) = auth.uid()
+);
+```
+
+### Ordre d'execution recommande
+
+1. **Section 13** (Migration SQL pour une base deja existante) : ajoute les
+   colonnes cadence sur `match_invites`, `matchmaking_queue`, `online_matches`,
+   `online_lobbies`. A executer en premier.
+2. **Section 14** (ce bloc, fonctions + policies anti-recursion) : a executer
+   apres la section 13 si les salons 2v2 etaient deja crees, sinon directement.
+
+Les deux blocs sont idempotents et peuvent etre rejoues sans casser une base
+existante.
+
+### Verification
+
+Apres execution :
+
+- Creer un salon Quixo 2v2 cote A : aucun message `infinite recursion`.
+- Cote B, saisir le code et rejoindre : doit fonctionner.
+- Cote A, voir les 4 slots (host + 3 places) sans erreur.
+- Cote B, voir la composition d'equipes sans erreur.
+
+### Ce qui ne change pas
+
+Les policies de `match_invites`, `matchmaking_queue`, `online_matches`,
+`online_moves`, `friends`, `profiles`, `user_presence` sont **inchangees**.
+Aucune cle `service_role` n'est ajoutee cote Unity. Aucune table n'est rendue
+publique.

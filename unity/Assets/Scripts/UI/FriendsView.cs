@@ -100,12 +100,12 @@ namespace QuixoUnity.UI
         public void Refresh()
         {
             ResolveReferences();
-            ClearList(requestsContainer);
-            ClearList(invitesContainer);
-            ClearList(friendsContainer);
 
             if (!SessionManager.IsOnline)
             {
+                ClearList(requestsContainer);
+                ClearList(invitesContainer);
+                ClearList(friendsContainer);
                 CreateInfoRow(requestsContainer, "Mode hors ligne.");
                 CreateInfoRow(invitesContainer, "Mode hors ligne.");
                 CreateInfoRow(friendsContainer, "Mode hors ligne.");
@@ -117,6 +117,10 @@ namespace QuixoUnity.UI
             {
                 return;
             }
+
+            ClearList(requestsContainer);
+            ClearList(invitesContainer);
+            ClearList(friendsContainer);
 
             SetBusy(true);
             SetStatus("Chargement des amis...");
@@ -275,6 +279,7 @@ namespace QuixoUnity.UI
                 string cadence = TurnTimerSettings.DisplayName(invite.time_control_key, invite.initial_seconds, invite.increment_seconds);
                 CreateRowLabel(row.transform, $"Invitation acceptee par {ResolveFriendName(invite.to_user_id)} - {cadence}", palette.UiText, palette, flex: true);
                 var join = CreateRowButton(row.transform, "Rejoindre", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+                join.interactable = !_busy;
                 join.onClick.AddListener(() => JoinAcceptedInvite(invite));
             }
         }
@@ -315,6 +320,8 @@ namespace QuixoUnity.UI
 
             var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
             var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            accept.interactable = !_busy;
+            reject.interactable = !_busy;
             accept.onClick.AddListener(() => AcceptMatchInvite(invite));
             reject.onClick.AddListener(() => RejectMatchInvite(invite));
         }
@@ -336,8 +343,8 @@ namespace QuixoUnity.UI
 
             var quixo = CreateRowButton(row.transform, "Inviter Quixo", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
             var qomet = CreateRowButton(row.transform, "Inviter Qomet", palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
-            quixo.interactable = isOnline;
-            qomet.interactable = isOnline;
+            quixo.interactable = isOnline && !_busy;
+            qomet.interactable = isOnline && !_busy;
             quixo.onClick.AddListener(() => SendGameInvite(item, GameKind.Quixo));
             qomet.onClick.AddListener(() => SendGameInvite(item, GameKind.Qomet));
         }
@@ -382,11 +389,19 @@ namespace QuixoUnity.UI
             }
 
             SetBusy(true);
-            SetStatus($"Invitation {OnlineSessionTransit.GameKindName(kind)} - cadence {TurnTimerSettings.DisplayCurrent()}...");
+            SetStatus($"Envoi invitation {OnlineSessionTransit.GameKindName(kind)} ({TurnTimerSettings.DisplayCurrent()})...");
             onlineMatchService.SendInvite(friend.UserId, kind, result =>
             {
                 SetBusy(false);
-                SetStatus(result != null ? result.Message : "Invitation impossible.");
+                if (result != null && result.Success)
+                {
+                    SetStatus("Invitation envoyee.");
+                }
+                else
+                {
+                    SetStatus(result != null ? result.Message : "Impossible d'envoyer l'invitation.");
+                }
+
                 Refresh();
             });
         }
@@ -410,10 +425,11 @@ namespace QuixoUnity.UI
                     return;
                 }
 
-                Debug.Log($"[Online] Accepted invite {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
+                Debug.Log($"[Invite] Accepted invite {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
                 if (!OnlineSessionTransit.IsValidForLocalPlayer(result.Match, SessionManager.UserId))
                 {
-                    SetStatus("Match invalide ou inaccessible.");
+                    SetStatus("Vous ne faites pas partie de ce match.");
+                    Refresh();
                     return;
                 }
 
@@ -456,29 +472,32 @@ namespace QuixoUnity.UI
 
             SetBusy(true);
             SetStatus("Chargement du match...");
+            Debug.Log($"[Invite] Join accepted match id={invite.match_id}");
             onlineMatchService.FetchMatch(invite.match_id, result =>
             {
                 SetBusy(false);
                 if (result == null || !result.Success || result.Match == null)
                 {
                     SetStatus(result != null ? result.Message : "Match introuvable.");
+                    Refresh();
                     return;
                 }
 
                 if (!string.Equals(result.Match.status, "active", System.StringComparison.OrdinalIgnoreCase))
                 {
-                    SetStatus("Cette partie est terminee ou annulee.");
+                    SetStatus("Ce match n'est plus actif.");
                     Refresh();
                     return;
                 }
 
                 if (!OnlineSessionTransit.IsValidForLocalPlayer(result.Match, SessionManager.UserId))
                 {
-                    SetStatus("Match invalide ou inaccessible.");
+                    SetStatus("Vous ne faites pas partie de ce match.");
+                    Refresh();
                     return;
                 }
 
-                Debug.Log($"[Online] Accepted invite (sender side) {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
+                Debug.Log($"[Invite] Join accepted match id={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.to_user_id));
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
