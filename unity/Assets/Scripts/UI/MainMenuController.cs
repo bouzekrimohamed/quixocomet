@@ -102,7 +102,7 @@ namespace QuixoUnity.UI
             }
             else if (SessionManager.IsOffline)
             {
-                SetStatus("Mode invite : online indisponible. Connectez-vous pour jouer en ligne.");
+                SetStatus("Mode invite : jeu en ligne indisponible. Connectez-vous pour jouer en ligne.");
             }
         }
 
@@ -196,7 +196,7 @@ namespace QuixoUnity.UI
         {
             SetPanelState(false, false, false, true);
             RenderTeamLobby();
-            SetStatus("Creez un lobby 2v2 ou rejoignez un code existant.");
+            SetStatus("Creez un salon 2v2 ou rejoignez un code existant.");
         }
 
         private bool RequireOnlineAccount()
@@ -249,7 +249,7 @@ namespace QuixoUnity.UI
 
             if (!SessionManager.IsOnline)
             {
-                SetStatus("Connectez-vous pour utiliser les amis et le online.");
+                SetStatus("Connectez-vous pour utiliser les amis et le jeu en ligne.");
                 return;
             }
 
@@ -295,22 +295,22 @@ namespace QuixoUnity.UI
 
         public void SelectTimerUnlimited()
         {
-            SelectTimer(TurnTimerSettings.Unlimited);
+            SelectTimer("none");
         }
 
         public void SelectTimer15()
         {
-            SelectTimer(15);
+            SelectTimer("1+0");
         }
 
         public void SelectTimer30()
         {
-            SelectTimer(30);
+            SelectTimer("5+3");
         }
 
         public void SelectTimer60()
         {
-            SelectTimer(60);
+            SelectTimer("10+5");
         }
 
         public void CreateTeamLobby()
@@ -322,7 +322,7 @@ namespace QuixoUnity.UI
 
             ResolveReferences();
             SetTeamLobbyBusy(true);
-            SetStatus("Creation du lobby 2v2...");
+            SetStatus("Creation du salon 2v2...");
             onlineMatchService.CreateTeamLobby(HandleTeamLobbyResult);
         }
 
@@ -381,14 +381,14 @@ namespace QuixoUnity.UI
             onlineMatchService.LeaveTeamLobby(lobbyId, result =>
             {
                 SetTeamLobbyBusy(false);
-                SetStatus(result != null ? result.Message : "Lobby quitte.");
+                SetStatus(result != null ? result.Message : "Salon quitte.");
                 ShowOnlineChoice();
             });
         }
 
-        private void SelectTimer(int seconds)
+        private void SelectTimer(string key)
         {
-            TurnTimerSettings.SelectedSeconds = seconds;
+            TurnTimerSettings.SelectedKey = key;
             RefreshTimerSelection();
         }
 
@@ -401,7 +401,7 @@ namespace QuixoUnity.UI
 
             string code = teamLobbyCodeInput != null ? teamLobbyCodeInput.text : string.Empty;
             SetTeamLobbyBusy(true);
-            SetStatus($"Connexion au lobby {OnlineSessionTransit.TeamName(team)}...");
+            SetStatus($"Connexion au salon {TeamDisplayName(team)}...");
             onlineMatchService.JoinTeamLobby(code, team, HandleTeamLobbyResult);
         }
 
@@ -410,7 +410,7 @@ namespace QuixoUnity.UI
             SetTeamLobbyBusy(false);
             if (result == null)
             {
-                SetStatus("Operation lobby impossible.");
+                SetStatus("Operation salon impossible.");
                 return;
             }
 
@@ -446,9 +446,6 @@ namespace QuixoUnity.UI
 
             StopTeamLobbyPolling();
             OnlineSessionTransit.StartTeam(_teamLobbySnapshot.Match, SessionManager.UserId, _teamLobbySnapshot);
-            OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds > 0
-                ? TurnTimerSettings.SelectedSeconds
-                : TurnTimerSettings.DefaultSeconds;
             SceneTransit.SelectedGame = GameKind.Quixo;
             SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
             LoadGameplay();
@@ -506,7 +503,7 @@ namespace QuixoUnity.UI
             string code = hasLobby ? _teamLobbySnapshot.Lobby.lobby_code : "aucun";
             if (teamLobbyCodeLabel != null)
             {
-                teamLobbyCodeLabel.text = $"Code lobby : {code}";
+                teamLobbyCodeLabel.text = $"Code salon : {code}";
             }
 
             if (teamLobbyTeam1Label != null)
@@ -521,9 +518,12 @@ namespace QuixoUnity.UI
 
             if (teamLobbyHintLabel != null)
             {
+                string cadence = hasLobby
+                    ? TurnTimerSettings.DisplayName(_teamLobbySnapshot.Lobby.time_control_key, _teamLobbySnapshot.Lobby.initial_seconds, _teamLobbySnapshot.Lobby.increment_seconds)
+                    : TurnTimerSettings.DisplayCurrent();
                 teamLobbyHintLabel.text = hasLobby
-                    ? "Ordre : Equipe 1 joueur 1 -> Equipe 2 joueur 1 -> Equipe 1 joueur 2 -> Equipe 2 joueur 2."
-                    : "Creez un lobby, partagez le code, puis les joueurs rejoignent Team 1 ou Team 2.";
+                    ? $"Cadence : {cadence}. Ordre : Equipe 1 joueur 1 -> Equipe 2 joueur 1 -> Equipe 1 joueur 2 -> Equipe 2 joueur 2."
+                    : $"Cadence : {cadence}. Creez un salon, partagez le code, puis les joueurs rejoignent l'equipe 1 ou l'equipe 2.";
             }
 
             bool online = SessionManager.IsOnline;
@@ -549,16 +549,25 @@ namespace QuixoUnity.UI
             return string.IsNullOrWhiteSpace(player.username) ? "joueur" : player.username;
         }
 
+        private static string TeamDisplayName(TeamId team)
+        {
+            return team == TeamId.Team1 ? "l'equipe 1" : team == TeamId.Team2 ? "l'equipe 2" : "une equipe";
+        }
+
         private void RefreshTimerSelection()
         {
-            int current = TurnTimerSettings.SelectedSeconds;
-            HighlightTimerButton(timerUnlimitedButton, current == TurnTimerSettings.Unlimited);
-            HighlightTimerButton(timer15Button, current == 15);
-            HighlightTimerButton(timer30Button, current == 30);
-            HighlightTimerButton(timer60Button, current == 60);
+            string current = TurnTimerSettings.SelectedKey;
+            SetButtonLabel(timerUnlimitedButton, "Sans limite");
+            SetButtonLabel(timer15Button, "1+0");
+            SetButtonLabel(timer30Button, "5+3");
+            SetButtonLabel(timer60Button, "10+5");
+            HighlightTimerButton(timerUnlimitedButton, current == "none");
+            HighlightTimerButton(timer15Button, current == "1+0");
+            HighlightTimerButton(timer30Button, current == "5+3");
+            HighlightTimerButton(timer60Button, current == "10+5");
             if (timerSummaryLabel != null)
             {
-                timerSummaryLabel.text = $"Temps par tour : {TurnTimerSettings.DisplayCurrent()}";
+                timerSummaryLabel.text = $"Cadence : {TurnTimerSettings.DisplayCurrent()}";
             }
         }
 
@@ -620,13 +629,13 @@ namespace QuixoUnity.UI
 
             _searchingKind = kind;
             SetOnlineSearching(true);
-            SetStatus($"Recherche d'un joueur {OnlineSessionTransit.GameKindName(kind)}...");
+            SetStatus($"Recherche {OnlineSessionTransit.GameKindName(kind)} - cadence {TurnTimerSettings.DisplayCurrent()}...");
             onlineMatchService.StartMatchmaking(kind, result =>
             {
                 if (result == null || !result.Success || result.Match == null)
                 {
                     SetOnlineSearching(false);
-                    SetStatus(result != null ? result.Message : "Matchmaking impossible.");
+                    SetStatus(result != null ? result.Message : "Recherche de partie impossible.");
                     return;
                 }
 
@@ -638,12 +647,6 @@ namespace QuixoUnity.UI
                 }
 
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId);
-                // V1 matchmaking aleatoire : chaque client applique sa propre preference de timer.
-                // C'est documente dans le SUPABASE_SETUP. La duree par defaut est 30s si l'utilisateur
-                // a choisi "sans limite", pour eviter une partie qui ne se termine jamais cote prof.
-                OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds > 0
-                    ? TurnTimerSettings.SelectedSeconds
-                    : TurnTimerSettings.DefaultSeconds;
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
                 LoadGameplay();
@@ -868,6 +871,10 @@ namespace QuixoUnity.UI
 
             SetInteractable(themeButton, !searching);
             SetInteractable(logoutButton, !searching);
+            SetInteractable(timerUnlimitedButton, !searching);
+            SetInteractable(timer15Button, !searching);
+            SetInteractable(timer30Button, !searching);
+            SetInteractable(timer60Button, !searching);
             if (cancelOnlineButton != null)
             {
                 cancelOnlineButton.gameObject.SetActive(searching);
@@ -944,6 +951,20 @@ namespace QuixoUnity.UI
             {
                 Color background = button.interactable ? normalColor : disabledColor;
                 label.color = VisualThemeCatalog.GetButtonTextColor(background, VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme));
+            }
+        }
+
+        private static void SetButtonLabel(Button button, string text)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
+            if (label != null)
+            {
+                label.text = text;
             }
         }
 

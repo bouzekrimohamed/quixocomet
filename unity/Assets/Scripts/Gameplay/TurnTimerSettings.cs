@@ -3,74 +3,195 @@ using UnityEngine;
 namespace QuixoUnity.Gameplay
 {
     /// <summary>
-    /// Choix du temps par tour, persistant entre les sessions Unity via PlayerPrefs.
-    /// 0 = sans limite. Les autres valeurs autorisees sont 15, 30 et 60 secondes.
+    /// Choix de cadence persistant entre les sessions Unity via PlayerPrefs.
+    /// Format type echecs : initial + increment. 0+0 = sans limite.
     /// </summary>
     public static class TurnTimerSettings
     {
-        private const string PlayerPrefsKey = "Quixo.TurnTimerSeconds";
+        private const string PlayerPrefsKey = "Quixo.TimeControlKey";
+        private const string LegacyPlayerPrefsKey = "Quixo.TurnTimerSeconds";
 
-        // Valeur par defaut : 30 secondes. Permet une partie nerveuse sans etre punitive.
-        public const int DefaultSeconds = 30;
+        public sealed class TimeControlOption
+        {
+            public readonly string Key;
+            public readonly int InitialSeconds;
+            public readonly int IncrementSeconds;
+            public readonly string Label;
 
-        // 0 represente "sans limite" en interne. Ne pas changer cette convention.
+            public TimeControlOption(string key, int initialSeconds, int incrementSeconds, string label)
+            {
+                Key = key;
+                InitialSeconds = initialSeconds;
+                IncrementSeconds = incrementSeconds;
+                Label = label;
+            }
+        }
+
+        // Compatibilite avec l'ancien code : 0 represente "sans limite".
         public const int Unlimited = 0;
+        public const int DefaultSeconds = 300;
+        public const string DefaultKey = "5+3";
 
-        public static readonly int[] AvailableOptions = { Unlimited, 15, 30, 60 };
+        public static readonly TimeControlOption[] AvailableOptions =
+        {
+            new("none", 0, 0, "Sans limite"),
+            new("1+0", 60, 0, "1+0"),
+            new("3+0", 180, 0, "3+0"),
+            new("5+0", 300, 0, "5+0"),
+            new("10+0", 600, 0, "10+0"),
+            new("15+0", 900, 0, "15+0"),
+            new("30+0", 1800, 0, "30+0"),
+            new("1+1", 60, 1, "1+1"),
+            new("3+2", 180, 2, "3+2"),
+            new("5+3", 300, 3, "5+3"),
+            new("10+5", 600, 5, "10+5")
+        };
 
-        private static int _cached = -1;
+        private static string _cachedKey;
 
-        public static int SelectedSeconds
+        public static string SelectedKey
         {
             get
             {
-                if (_cached >= 0)
+                if (!string.IsNullOrWhiteSpace(_cachedKey))
                 {
-                    return _cached;
+                    return _cachedKey;
                 }
 
-                int stored = PlayerPrefs.GetInt(PlayerPrefsKey, DefaultSeconds);
-                _cached = Normalize(stored);
-                return _cached;
+                string stored = PlayerPrefs.GetString(PlayerPrefsKey, string.Empty);
+                if (string.IsNullOrWhiteSpace(stored) && PlayerPrefs.HasKey(LegacyPlayerPrefsKey))
+                {
+                    stored = KeyFromLegacySeconds(PlayerPrefs.GetInt(LegacyPlayerPrefsKey, DefaultSeconds));
+                }
+
+                _cachedKey = NormalizeKey(stored);
+                return _cachedKey;
             }
             set
             {
-                int safe = Normalize(value);
-                _cached = safe;
-                PlayerPrefs.SetInt(PlayerPrefsKey, safe);
+                string safe = NormalizeKey(value);
+                _cachedKey = safe;
+                PlayerPrefs.SetString(PlayerPrefsKey, safe);
                 PlayerPrefs.Save();
             }
         }
 
+        public static TimeControlOption SelectedOption => OptionForKey(SelectedKey);
+
+        public static int SelectedInitialSeconds => SelectedOption.InitialSeconds;
+
+        public static int SelectedIncrementSeconds => SelectedOption.IncrementSeconds;
+
+        // Ancienne API conservee pour les scripts/scenes existants.
+        public static int SelectedSeconds
+        {
+            get => SelectedInitialSeconds;
+            set => SelectedKey = KeyFromLegacySeconds(value);
+        }
+
         public static bool IsUnlimited => SelectedSeconds <= 0;
+
+        public static string NormalizeKey(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return DefaultKey;
+            }
+
+            string trimmed = value.Trim();
+            foreach (var option in AvailableOptions)
+            {
+                if (string.Equals(option.Key, trimmed, System.StringComparison.OrdinalIgnoreCase))
+                {
+                    return option.Key;
+                }
+            }
+
+            return DefaultKey;
+        }
+
+        public static TimeControlOption OptionForKey(string key)
+        {
+            string safeKey = NormalizeKey(key);
+            foreach (var option in AvailableOptions)
+            {
+                if (option.Key == safeKey)
+                {
+                    return option;
+                }
+            }
+
+            return AvailableOptions[9];
+        }
+
+        public static TimeControlOption OptionForNetwork(string key, int initialSeconds, int incrementSeconds)
+        {
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                var option = OptionForKey(key);
+                if (option.Key == NormalizeKey(key))
+                {
+                    return option;
+                }
+            }
+
+            if (initialSeconds <= 0 && incrementSeconds <= 0)
+            {
+                return OptionForKey("none");
+            }
+
+            return new TimeControlOption(
+                $"{Mathf.Max(0, initialSeconds / 60)}+{Mathf.Max(0, incrementSeconds)}",
+                Mathf.Max(0, initialSeconds),
+                Mathf.Max(0, incrementSeconds),
+                DisplayName(initialSeconds, incrementSeconds));
+        }
 
         public static string DisplayName(int seconds)
         {
-            return seconds <= 0 ? "Sans limite" : $"{seconds}s";
+            return DisplayName(seconds, 0);
+        }
+
+        public static string DisplayName(string key, int initialSeconds, int incrementSeconds)
+        {
+            if (!string.IsNullOrWhiteSpace(key))
+            {
+                return OptionForKey(key).Label;
+            }
+
+            return DisplayName(initialSeconds, incrementSeconds);
+        }
+
+        public static string DisplayName(int initialSeconds, int incrementSeconds)
+        {
+            if (initialSeconds <= 0 && incrementSeconds <= 0)
+            {
+                return "Sans limite";
+            }
+
+            int minutes = Mathf.Max(0, initialSeconds) / 60;
+            return $"{minutes}+{Mathf.Max(0, incrementSeconds)}";
         }
 
         public static string DisplayCurrent()
         {
-            return DisplayName(SelectedSeconds);
+            return SelectedOption.Label;
         }
 
-        private static int Normalize(int value)
+        private static string KeyFromLegacySeconds(int value)
         {
             if (value <= 0)
             {
-                return Unlimited;
+                return "none";
             }
 
-            // On clampe sur les valeurs autorisees pour eviter les valeurs corrompues.
-            foreach (var allowed in AvailableOptions)
+            return value switch
             {
-                if (allowed == value)
-                {
-                    return value;
-                }
-            }
-
-            return DefaultSeconds;
+                15 => "1+0",
+                30 => "3+0",
+                60 => "5+0",
+                _ => DefaultKey
+            };
         }
     }
 }

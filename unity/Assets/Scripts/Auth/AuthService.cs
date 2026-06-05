@@ -14,7 +14,7 @@ namespace QuixoUnity.Auth
         {
             if (string.IsNullOrWhiteSpace(username))
             {
-                onComplete?.Invoke(AuthOperationResult.Fail("Entrez un username."));
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez un pseudo."));
                 return;
             }
 
@@ -365,7 +365,7 @@ namespace QuixoUnity.Auth
         {
             if (string.IsNullOrWhiteSpace(identifier))
             {
-                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre email ou username."));
+                onComplete?.Invoke(AuthOperationResult.Fail("Entrez votre email ou pseudo."));
                 return false;
             }
 

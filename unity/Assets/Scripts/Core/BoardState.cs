@@ -2,11 +2,21 @@ using System;
 
 namespace QuixoUnity.Core
 {
+    public enum QuixoDotOwner
+    {
+        None = 0,
+        Team1Player1 = 1,
+        Team1Player2 = 2,
+        Team2Player1 = 3,
+        Team2Player2 = 4
+    }
+
     [Serializable]
     public sealed class BoardState
     {
         public int Size { get; }
         public PlayerMark[,] Cells { get; }
+        public QuixoDotOwner[,] DotOwners { get; }
         public PlayerMark CurrentPlayer { get; private set; }
         public PlayerMark Winner { get; private set; }
 
@@ -14,6 +24,7 @@ namespace QuixoUnity.Core
         {
             Size = size;
             Cells = new PlayerMark[size, size];
+            DotOwners = new QuixoDotOwner[size, size];
             CurrentPlayer = PlayerMark.Player1;
             Winner = PlayerMark.None;
         }
@@ -35,6 +46,7 @@ namespace QuixoUnity.Core
                 for (int c = 0; c < Size; c++)
                 {
                     Cells[r, c] = PlayerMark.None;
+                    DotOwners[r, c] = QuixoDotOwner.None;
                 }
             }
 
@@ -50,6 +62,7 @@ namespace QuixoUnity.Core
                 for (int c = 0; c < Size; c++)
                 {
                     clone.Cells[r, c] = Cells[r, c];
+                    clone.DotOwners[r, c] = DotOwners[r, c];
                 }
             }
 

@@ -127,7 +127,16 @@ namespace QuixoUnity.UI
 
         public static string DisplayName(GameplayTheme theme)
         {
-            return theme.ToString();
+            return theme switch
+            {
+                GameplayTheme.MarineBlue => "Bleu marin",
+                GameplayTheme.EmeraldGreen => "Vert emeraude",
+                GameplayTheme.RoyalPurple => "Violet royal",
+                GameplayTheme.ClassicWood => "Bois classique",
+                GameplayTheme.PremiumDark => "Sombre premium",
+                GameplayTheme.CleanModern => "Moderne clair",
+                _ => "Bleu marin"
+            };
         }
 
         public static GameplayPalette Get(GameplayTheme theme)

@@ -12,8 +12,8 @@ namespace QuixoUnity.UI
     {
         [SerializeField] private Transform boardRoot = null!;
         [SerializeField] private GameObject cellPrefab = null!;
-        [SerializeField] private float spacing = 1.08f;
-        [SerializeField] private float moveAnimDuration = 0.18f;
+        [SerializeField] private float spacing = 1.14f;
+        [SerializeField] private float moveAnimDuration = 0.22f;
         [SerializeField] private Color generatedCellColor = new(0.92f, 0.82f, 0.62f);
         [SerializeField] private Color generatedTopColor = new(1f, 0.9f, 0.68f);
         [SerializeField] private Color generatedSelectedCellColor = new(1f, 0.9f, 0.62f);
@@ -29,24 +29,28 @@ namespace QuixoUnity.UI
 
         private BoardCellView[,] _cells = null!;
         private Action<int, int> _onCellClick = null!;
+        private Action<int, int, Vector2> _onCellDrag = null!;
         private GameKind _generatedKind = GameKind.Quixo;
         private Vector3 _initialLocalScale = Vector3.one;
         private bool _hasInitialLocalScale;
         private bool _hasGeneratedBoard;
         private int _renderVersion;
+        private Transform _teamLabelsRoot;
 
-        private const float CubeWidth = 0.94f;
-        private const float CubeHeight = 0.38f;
-        private const float CubeTop = 0.4f;
+        private const float CubeWidth = 0.88f;
+        private const float CubeHeight = 0.42f;
+        private const float CubeTop = 0.445f;
         private const float QometSocketY = 0.155f;
         private const float QometPieceY = 0.235f;
-        private static readonly Color QometBaseColor = new(0.018f, 0.020f, 0.026f, 1f);
-        private static readonly Color QometSurfaceColor = new(0.055f, 0.061f, 0.071f, 1f);
-        private static readonly Color QometTrimColor = new(0.125f, 0.130f, 0.142f, 1f);
-        private static readonly Color QometRailColor = new(0.250f, 0.258f, 0.275f, 1f);
-        private static readonly Color QometInlayColor = new(0.098f, 0.106f, 0.122f, 1f);
-        private static readonly Color QometSocketColor = new(0.145f, 0.154f, 0.172f, 1f);
-        private static readonly Color QometSocketAccentColor = new(0.310f, 0.325f, 0.350f, 1f);
+        private static readonly Color QometBaseColor = new(0.015f, 0.017f, 0.023f, 1f);
+        private static readonly Color QometSurfaceColor = new(0.060f, 0.066f, 0.078f, 1f);
+        private static readonly Color QometTrimColor = new(0.150f, 0.155f, 0.168f, 1f);
+        private static readonly Color QometRailColor = new(0.305f, 0.318f, 0.340f, 1f);
+        private static readonly Color QometInlayColor = new(0.105f, 0.115f, 0.135f, 1f);
+        private static readonly Color QometWellColor = new(0.028f, 0.032f, 0.040f, 1f);
+        private static readonly Color QometWellRimColor = new(0.205f, 0.216f, 0.238f, 1f);
+        private static readonly Color QometSocketColor = new(0.115f, 0.126f, 0.148f, 1f);
+        private static readonly Color QometSocketAccentColor = new(0.385f, 0.400f, 0.430f, 1f);
         private static readonly Color QometGoldColor = new(1.000f, 0.700f, 0.155f, 1f);
         private static readonly Color QometGoldTopColor = new(1.000f, 0.835f, 0.330f, 1f);
         private static readonly Color QometRedColor = new(0.500f, 0.050f, 0.082f, 1f);
@@ -58,7 +62,7 @@ namespace QuixoUnity.UI
             CaptureInitialScale();
         }
 
-        public void Initialize(int size, Action<int, int> onCellClick, GameKind kind = GameKind.Quixo)
+        public void Initialize(int size, Action<int, int> onCellClick, GameKind kind = GameKind.Quixo, Action<int, int, Vector2> onCellDrag = null)
         {
             if (size <= 0)
             {
@@ -70,12 +74,9 @@ namespace QuixoUnity.UI
             _renderVersion++;
             renderKind = kind;
             _onCellClick = onCellClick;
+            _onCellDrag = onCellDrag;
             CaptureInitialScale();
-            // Qomet etait visiblement plus petit que Quixo (0.52). On passe a 0.66 pour
-            // gagner ~27% de surface utile sans empieter sur le panneau de tour ni les
-            // boutons en haut a droite. Les hitboxes des cellules suivent le scale donc
-            // la logique de clic reste alignee avec le visuel.
-            transform.localScale = renderKind == GameKind.Qomet ? Vector3.one * 0.66f : _initialLocalScale;
+            transform.localScale = renderKind == GameKind.Qomet ? Vector3.one * 0.84f : _initialLocalScale;
             if (boardRoot == null)
             {
                 boardRoot = transform;
@@ -118,7 +119,7 @@ namespace QuixoUnity.UI
                     go.name = $"Cell_{r}_{c}";
                     go.transform.localPosition = GetCellLocalPosition(r, c, size);
                     var view = PrepareCellView(go);
-                    view.Initialize(r, c, _onCellClick);
+                    view.Initialize(r, c, _onCellClick, _onCellDrag);
                     _cells[r, c] = view;
                 }
             }
@@ -169,7 +170,8 @@ namespace QuixoUnity.UI
                     var cell = _cells[r, c];
                     if (cell != null)
                     {
-                        cell.SetState(state.Cells[r, c], selected);
+                        QuixoDotOwner dotOwner = renderKind == GameKind.Quixo ? state.DotOwners[r, c] : QuixoDotOwner.None;
+                        cell.SetState(state.Cells[r, c], selected, dotOwner);
                     }
                 }
             }
@@ -190,6 +192,22 @@ namespace QuixoUnity.UI
             }
 
             StartCoroutine(AnimateBoardChangeRoutine(state, version));
+        }
+
+        public void SetTeamPositionLabels(string bottom, string right, string top, string left, bool visible)
+        {
+            if (!visible || renderKind != GameKind.Quixo)
+            {
+                SetObjectActive(_teamLabelsRoot != null ? _teamLabelsRoot.gameObject : null, false);
+                return;
+            }
+
+            EnsureTeamLabelsRoot();
+            SetObjectActive(_teamLabelsRoot.gameObject, true);
+            SetTeamLabel("BottomPositionLabel", string.IsNullOrWhiteSpace(bottom) ? "J1 - Bas" : bottom, new Vector3(0f, 0.18f, -3.25f));
+            SetTeamLabel("RightPositionLabel", string.IsNullOrWhiteSpace(right) ? "J2 - Droite" : right, new Vector3(3.32f, 0.18f, 0f));
+            SetTeamLabel("TopPositionLabel", string.IsNullOrWhiteSpace(top) ? "J3 - Haut" : top, new Vector3(0f, 0.18f, 3.25f));
+            SetTeamLabel("LeftPositionLabel", string.IsNullOrWhiteSpace(left) ? "J4 - Gauche" : left, new Vector3(-3.32f, 0.18f, 0f));
         }
 
         private IEnumerator AnimateBoardChangeRoutine(BoardState state, int version)
@@ -263,6 +281,8 @@ namespace QuixoUnity.UI
                     DestroyImmediate(child);
                 }
             }
+
+            _teamLabelsRoot = null;
         }
 
         private void ResetCellsLayout(int size)
@@ -278,7 +298,7 @@ namespace QuixoUnity.UI
                     }
 
                     cell.transform.localPosition = GetCellLocalPosition(r, c, size);
-                    cell.Initialize(r, c, _onCellClick);
+                    cell.Initialize(r, c, _onCellClick, _onCellDrag);
                     cell.ResetInteractionState();
                 }
             }
@@ -428,6 +448,7 @@ namespace QuixoUnity.UI
             UpdateSceneMaterial("BoardFocusMat", trim);
             UpdateSceneMaterial("BoardSoftHalo", focus);
             UpdateSceneMaterial("BoardGroundShadow", Color.Lerp(cameraBackground, Color.black, 0.28f));
+            UpdateStageForCurrentGame();
 
             var mainCamera = Camera.main;
             if (mainCamera != null)
@@ -469,6 +490,33 @@ namespace QuixoUnity.UI
             }
         }
 
+        private void UpdateStageForCurrentGame()
+        {
+            if (renderKind == GameKind.Qomet)
+            {
+                UpdateSceneTransform("BoardFocusMat", new Vector3(9.40f, 0.045f, 9.40f), new Vector3(0f, -0.225f, 0f));
+                UpdateSceneTransform("BoardSoftHalo", new Vector3(8.80f, 0.032f, 8.80f), new Vector3(0f, -0.188f, 0f));
+                UpdateSceneTransform("BoardGroundShadow", new Vector3(8.25f, 0.024f, 8.25f), new Vector3(0f, -0.248f, 0.08f));
+                return;
+            }
+
+            UpdateSceneTransform("BoardFocusMat", new Vector3(6.72f, 0.045f, 6.72f), new Vector3(0f, -0.220f, 0f));
+            UpdateSceneTransform("BoardSoftHalo", new Vector3(6.24f, 0.032f, 6.24f), new Vector3(0f, -0.185f, 0f));
+            UpdateSceneTransform("BoardGroundShadow", new Vector3(5.82f, 0.024f, 5.82f), new Vector3(0f, -0.245f, 0.08f));
+        }
+
+        private void UpdateSceneTransform(string objectName, Vector3 localScale, Vector3 localPosition)
+        {
+            var target = transform.Find(objectName);
+            if (target == null)
+            {
+                return;
+            }
+
+            target.localScale = localScale;
+            target.localPosition = localPosition;
+        }
+
         private GameObject CreateGeneratedCell()
         {
             var cell = new GameObject("Cell");
@@ -481,20 +529,42 @@ namespace QuixoUnity.UI
             var visualRoot = new GameObject("TileVisual");
             visualRoot.transform.SetParent(cell.transform, false);
 
+            var shadow = CreatePrimitiveChild(visualRoot.transform, "CubeContactShadow", Color.Lerp(generatedBoardTrimColor, Color.black, 0.35f), PrimitiveType.Cube, 0.08f, 0f);
+            shadow.transform.localPosition = new Vector3(0.030f, 0.018f, -0.035f);
+            shadow.transform.localScale = new Vector3(CubeWidth * 1.04f, 0.018f, CubeWidth * 1.04f);
+
             var body = CreatePrimitiveChild(visualRoot.transform, "Body", generatedCellColor);
             body.transform.localPosition = new Vector3(0f, CubeHeight * 0.5f, 0f);
             body.transform.localScale = new Vector3(CubeWidth, CubeHeight, CubeWidth);
             var renderer = body.GetComponent<MeshRenderer>();
 
+            var frontShadow = CreatePrimitiveChild(visualRoot.transform, "FrontFaceShade", Color.Lerp(generatedCellColor, generatedBoardTrimColor, 0.46f), PrimitiveType.Cube, 0.10f, 0f);
+            frontShadow.transform.localPosition = new Vector3(0f, CubeHeight * 0.45f, -CubeWidth * 0.505f);
+            frontShadow.transform.localScale = new Vector3(CubeWidth * 0.92f, CubeHeight * 0.70f, 0.020f);
+
+            var rightShade = CreatePrimitiveChild(visualRoot.transform, "RightFaceShade", Color.Lerp(generatedCellColor, generatedBoardTrimColor, 0.32f), PrimitiveType.Cube, 0.10f, 0f);
+            rightShade.transform.localPosition = new Vector3(CubeWidth * 0.505f, CubeHeight * 0.46f, 0f);
+            rightShade.transform.localScale = new Vector3(0.020f, CubeHeight * 0.68f, CubeWidth * 0.88f);
+
             var top = CreatePrimitiveChild(visualRoot.transform, "TopFace", generatedTopColor);
-            top.transform.localPosition = new Vector3(0f, CubeTop + 0.004f, 0f);
-            top.transform.localScale = new Vector3(CubeWidth * 0.9f, 0.014f, CubeWidth * 0.9f);
+            top.transform.localPosition = new Vector3(0f, CubeTop + 0.006f, 0f);
+            top.transform.localScale = new Vector3(CubeWidth * 0.86f, 0.016f, CubeWidth * 0.86f);
+
+            var topHighlight = CreatePrimitiveChild(visualRoot.transform, "TopHighlight", Color.Lerp(generatedTopColor, Color.white, 0.20f), PrimitiveType.Cube, 0.20f, 0f);
+            topHighlight.transform.localPosition = new Vector3(-CubeWidth * 0.10f, CubeTop + 0.020f, CubeWidth * 0.10f);
+            topHighlight.transform.localScale = new Vector3(CubeWidth * 0.48f, 0.010f, CubeWidth * 0.030f);
+
+            var topGroove = CreatePrimitiveChild(visualRoot.transform, "TopInsetGroove", Color.Lerp(generatedTopColor, generatedBoardTrimColor, 0.24f), PrimitiveType.Cube, 0.10f, 0f);
+            topGroove.transform.localPosition = new Vector3(0f, CubeTop + 0.024f, 0f);
+            topGroove.transform.localScale = new Vector3(CubeWidth * 0.70f, 0.008f, CubeWidth * 0.70f);
 
             var text = CreateMarkText(visualRoot.transform);
+            var dot = CreateDotMarker(visualRoot.transform);
 
             var marker = CreateSelectionMarker(visualRoot.transform);
             var view = cell.AddComponent<BoardCellView>();
             view.ConfigureReferences(renderer, text, marker, visualRoot.transform);
+            view.ConfigureDotReference(dot);
             view.ConfigureStyle(generatedCellColor, generatedSelectedCellColor, generatedPlayer1Color, generatedPlayer2Color);
             view.ConfigureMarkFontSize(generatedMarkFontSize);
             return cell;
@@ -613,6 +683,15 @@ namespace QuixoUnity.UI
             return text;
         }
 
+        private GameObject CreateDotMarker(Transform parent)
+        {
+            var dot = CreatePrimitiveChild(parent, "DotMarker", Color.Lerp(generatedTextShadowColor, Color.white, 0.18f), PrimitiveType.Cylinder, 0.20f, 0f);
+            dot.transform.localPosition = new Vector3(0f, CubeTop + 0.055f, 0f);
+            dot.transform.localScale = new Vector3(0.070f, 0.010f, 0.070f);
+            dot.SetActive(false);
+            return dot;
+        }
+
         private GameObject CreateSelectionMarker(Transform parent)
         {
             var marker = new GameObject("SelectionMarker");
@@ -634,6 +713,57 @@ namespace QuixoUnity.UI
             var bar = CreatePrimitiveChild(parent, name, generatedSelectionColor);
             bar.transform.localPosition = localPosition;
             bar.transform.localScale = localScale;
+        }
+
+        private void EnsureTeamLabelsRoot()
+        {
+            if (_teamLabelsRoot != null)
+            {
+                return;
+            }
+
+            var root = new GameObject("TeamPositionLabels");
+            root.transform.SetParent(boardRoot, false);
+            _teamLabelsRoot = root.transform;
+        }
+
+        private void SetTeamLabel(string name, string text, Vector3 localPosition)
+        {
+            EnsureTeamLabelsRoot();
+            Transform existing = FindChildByName(_teamLabelsRoot, name);
+            TextMeshPro label;
+            if (existing == null)
+            {
+                var labelObject = new GameObject(name);
+                labelObject.transform.SetParent(_teamLabelsRoot, false);
+                label = labelObject.AddComponent<TextMeshPro>();
+                label.name = name;
+                label.alignment = TextAlignmentOptions.Center;
+                label.fontStyle = FontStyles.Bold;
+                label.fontSize = 0.24f;
+                label.enableWordWrapping = false;
+                label.overflowMode = TextOverflowModes.Overflow;
+                label.rectTransform.sizeDelta = new Vector2(3.2f, 0.5f);
+                var textRenderer = label.GetComponent<Renderer>();
+                if (textRenderer != null)
+                {
+                    textRenderer.sortingOrder = 5;
+                }
+
+                existing = labelObject.transform;
+            }
+            else
+            {
+                label = existing.GetComponent<TextMeshPro>();
+            }
+
+            existing.localPosition = localPosition;
+            existing.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            if (label != null)
+            {
+                label.text = text;
+                label.color = Color.Lerp(generatedSelectionColor, Color.white, 0.28f);
+            }
         }
 
         private Material CreateMaterial(Color color, float smoothness = 0.18f, float metallic = 0f)
@@ -736,6 +866,23 @@ namespace QuixoUnity.UI
             surface.transform.localScale = new Vector3(boardWidth - 0.18f, 0.045f, boardWidth - 0.18f);
 
             float offset = (size - 1) * spacing * 0.5f;
+            var wellColor = Color.Lerp(generatedBoardTrimColor, Color.black, 0.18f);
+            var wellRimColor = Color.Lerp(generatedBoardColor, generatedTopColor, 0.16f);
+            for (int r = 0; r < size; r++)
+            {
+                for (int c = 0; c < size; c++)
+                {
+                    Vector3 cellPosition = GetGridCellPosition(r, c, size);
+                    var rim = CreatePrimitiveChild(boardRoot, $"CubeWellRim_{r}_{c}", wellRimColor, PrimitiveType.Cube, 0.12f, 0f);
+                    rim.transform.localPosition = new Vector3(cellPosition.x, 0.022f, cellPosition.z);
+                    rim.transform.localScale = new Vector3(CubeWidth * 1.17f, 0.010f, CubeWidth * 1.17f);
+
+                    var well = CreatePrimitiveChild(boardRoot, $"CubeWell_{r}_{c}", wellColor, PrimitiveType.Cube, 0.10f, 0f);
+                    well.transform.localPosition = new Vector3(cellPosition.x, 0.040f, cellPosition.z);
+                    well.transform.localScale = new Vector3(CubeWidth * 1.07f, 0.020f, CubeWidth * 1.07f);
+                }
+            }
+
             var grooveColor = Color.Lerp(generatedBoardTrimColor, generatedBoardColor, 0.18f);
             for (int i = 1; i < size; i++)
             {
@@ -761,8 +908,8 @@ namespace QuixoUnity.UI
             float boardDepth;
             if (size == QometGraph.BoardSize)
             {
-                boardWidth = 13.6f;
-                boardDepth = 7.6f;
+                boardWidth = 8.85f;
+                boardDepth = 8.85f;
             }
             else
             {
@@ -792,6 +939,10 @@ namespace QuixoUnity.UI
 
             if (size == QometGraph.BoardSize)
             {
+                CreateQometFrame("QometOuterInset", 3.78f, 0.122f, QometWellRimColor, 0.085f, 0.050f);
+                CreateQometFrame("QometMiddleInset", 2.56f, 0.124f, Color.Lerp(QometRailColor, QometWellRimColor, 0.34f), 0.060f, 0.038f);
+                CreateQometFrame("QometInnerInset", 1.34f, 0.126f, QometInlayColor, 0.044f, 0.028f);
+                CreateQometNodeWells(size);
                 CreateQometNetwork(size);
                 return;
             }
@@ -819,13 +970,41 @@ namespace QuixoUnity.UI
                 Vector2 a = QometGraph.GetVisualPosition(edge.A.x, edge.A.y);
                 Vector2 b = QometGraph.GetVisualPosition(edge.B.x, edge.B.y);
                 float distance = (a - b).magnitude;
-                bool isLongDiagonal = distance > 2.6f;
-                Color color = isLongDiagonal ? QometInlayColor : QometRailColor;
-                float width = isLongDiagonal ? 0.052f : 0.070f;
-                float height = isLongDiagonal ? 0.030f : 0.044f;
-                CreateQometRail($"QometRail_{index:00}", GetQometNodePosition(edge.A.x, edge.A.y, size), GetQometNodePosition(edge.B.x, edge.B.y, size), width, height, color, 0.090f);
+                bool isDiagonal = Mathf.Abs(a.x - b.x) > 0.05f && Mathf.Abs(a.y - b.y) > 0.05f;
+                bool isLongDiagonal = isDiagonal && distance > 2.25f;
+                bool isLongStraight = !isDiagonal && distance > 2.55f;
+                Color color = isLongDiagonal
+                    ? Color.Lerp(QometSurfaceColor, QometInlayColor, 0.55f)
+                    : isLongStraight ? Color.Lerp(QometRailColor, QometInlayColor, 0.45f) : QometRailColor;
+                float width = isLongDiagonal ? 0.034f : isLongStraight ? 0.052f : 0.070f;
+                float height = isLongDiagonal ? 0.020f : isLongStraight ? 0.030f : 0.044f;
+                float y = isLongDiagonal ? 0.078f : isLongStraight ? 0.084f : 0.090f;
+                CreateQometRail($"QometRail_{index:00}", GetQometNodePosition(edge.A.x, edge.A.y, size), GetQometNodePosition(edge.B.x, edge.B.y, size), width, height, color, y);
                 index++;
             }
+        }
+
+        private void CreateQometNodeWells(int size)
+        {
+            foreach (var node in QometGraph.AllNodes)
+            {
+                Vector3 position = GetQometNodePosition(node.Row, node.Col, size);
+                var rim = CreatePrimitiveChild(boardRoot, $"QometWellRim_{node.Id}", QometWellRimColor, PrimitiveType.Cube, 0.22f, 0.01f);
+                rim.transform.localPosition = new Vector3(position.x, 0.062f, position.z);
+                rim.transform.localScale = new Vector3(0.86f, 0.030f, 0.86f);
+
+                var well = CreatePrimitiveChild(boardRoot, $"QometWell_{node.Id}", QometWellColor, PrimitiveType.Cube, 0.12f, 0f);
+                well.transform.localPosition = new Vector3(position.x, 0.084f, position.z);
+                well.transform.localScale = new Vector3(0.68f, 0.030f, 0.68f);
+            }
+        }
+
+        private void CreateQometFrame(string name, float halfExtent, float y, Color color, float width, float height)
+        {
+            CreateQometRail($"{name}_Top", new Vector3(-halfExtent, 0f, halfExtent), new Vector3(halfExtent, 0f, halfExtent), width, height, color, y);
+            CreateQometRail($"{name}_Bottom", new Vector3(-halfExtent, 0f, -halfExtent), new Vector3(halfExtent, 0f, -halfExtent), width, height, color, y);
+            CreateQometRail($"{name}_Left", new Vector3(-halfExtent, 0f, -halfExtent), new Vector3(-halfExtent, 0f, halfExtent), width, height, color, y);
+            CreateQometRail($"{name}_Right", new Vector3(halfExtent, 0f, -halfExtent), new Vector3(halfExtent, 0f, halfExtent), width, height, color, y);
         }
 
         private void CreateQometRailChain(string prefix, Vector2Int[] nodes, int size, float width, float height, Color color, float y = 0.096f)
@@ -939,6 +1118,14 @@ namespace QuixoUnity.UI
         private static bool IsInBounds(int size, Vector2Int cell)
         {
             return cell.x >= 0 && cell.x < size && cell.y >= 0 && cell.y < size;
+        }
+
+        private static void SetObjectActive(GameObject target, bool active)
+        {
+            if (target != null)
+            {
+                target.SetActive(active);
+            }
         }
     }
 }

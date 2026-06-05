@@ -8,13 +8,14 @@ using UnityEngine.UI;
 
 namespace QuixoUnity.UI
 {
-    public sealed class BoardCellView : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
+    public sealed class BoardCellView : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler, IBeginDragHandler, IDragHandler, IEndDragHandler
     {
         [SerializeField] private MeshRenderer tileRenderer = null!;
         [SerializeField] private Transform visualRoot = null!;
         [SerializeField] private TextMeshPro markText = null!;
         [SerializeField] private Image selectionRing = null!;
         [SerializeField] private GameObject selectionMarker = null!;
+        [SerializeField] private GameObject dotMarker = null!;
         [SerializeField] private GameObject emptyTokenMarker = null!;
         [SerializeField] private GameObject player1Token = null!;
         [SerializeField] private GameObject player2Token = null!;
@@ -26,19 +27,26 @@ namespace QuixoUnity.UI
         [SerializeField] private float hoverScale = 1.04f;
         [SerializeField] private float selectedLift = 0.09f;
         [SerializeField] private float markFlipDuration = 0.24f;
+        [SerializeField] private float dragFeedbackDistance = 0.14f;
 
         private int _row;
         private int _col;
         private Action<int, int> _onClick = null!;
+        private Action<int, int, Vector2> _onDragComplete = null!;
         private Vector3 _baseScale;
         private Vector3 _baseVisualScale;
         private Vector3 _baseVisualPosition;
         private Quaternion _baseVisualRotation;
         private PlayerMark _currentMark = PlayerMark.None;
+        private QuixoDotOwner _dotOwner = QuixoDotOwner.None;
         private bool _hovered;
         private bool _selected;
         private bool _hasRenderedState;
         private bool _markAnimating;
+        private bool _dragging;
+        private Vector2 _dragStartPosition;
+        private Vector2 _dragDelta;
+        private Vector3 _dragVisualOffset;
         private Coroutine _feedbackRoutine = null!;
         private Coroutine _markRoutine = null!;
 
@@ -51,11 +59,12 @@ namespace QuixoUnity.UI
             CacheVisualPose();
         }
 
-        public void Initialize(int row, int col, Action<int, int> onClick)
+        public void Initialize(int row, int col, Action<int, int> onClick, Action<int, int, Vector2> onDragComplete = null)
         {
             _row = row;
             _col = col;
             _onClick = onClick;
+            _onDragComplete = onDragComplete;
             _baseScale = transform.localScale;
             CacheVisualPose();
         }
@@ -94,6 +103,12 @@ namespace QuixoUnity.UI
             ApplyTokenState(_currentMark);
         }
 
+        public void ConfigureDotReference(GameObject marker)
+        {
+            dotMarker = marker;
+            ApplyDotState(_currentMark, _dotOwner);
+        }
+
         public void ConfigureInteractionStyle(float hoverScaleOverride, float selectedLiftOverride)
         {
             hoverScale = hoverScaleOverride;
@@ -119,7 +134,13 @@ namespace QuixoUnity.UI
 
         public void SetState(PlayerMark mark, bool selected)
         {
+            SetState(mark, selected, QuixoDotOwner.None);
+        }
+
+        public void SetState(PlayerMark mark, bool selected, QuixoDotOwner dotOwner)
+        {
             _selected = selected;
+            _dotOwner = dotOwner;
             if (useTokenVisuals)
             {
                 StopMarkFlip();
@@ -131,6 +152,7 @@ namespace QuixoUnity.UI
                 }
 
                 ApplyTokenState(mark);
+                ApplyDotState(mark, dotOwner);
                 SetSelectionVisible(selected);
                 ApplyVisualPose();
                 return;
@@ -173,6 +195,7 @@ namespace QuixoUnity.UI
             }
 
             SetSelectionVisible(selected);
+            ApplyDotState(mark, dotOwner);
             ApplyVisualPose();
         }
 
@@ -182,9 +205,14 @@ namespace QuixoUnity.UI
             StopMarkFlip();
             _hovered = false;
             _selected = false;
+            _dragging = false;
+            _dragDelta = Vector2.zero;
+            _dragVisualOffset = Vector3.zero;
             _currentMark = PlayerMark.None;
+            _dotOwner = QuixoDotOwner.None;
             _hasRenderedState = false;
             ApplyTokenState(PlayerMark.None);
+            ApplyDotState(PlayerMark.None, QuixoDotOwner.None);
             SetSelectionVisible(false);
 
             ApplyVisualPose();
@@ -222,6 +250,42 @@ namespace QuixoUnity.UI
         public void OnPointerClick(PointerEventData eventData)
         {
             _onClick?.Invoke(_row, _col);
+        }
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            _dragging = true;
+            _dragStartPosition = eventData != null ? eventData.position : Vector2.zero;
+            _dragDelta = Vector2.zero;
+            _dragVisualOffset = Vector3.zero;
+            ApplyVisualPose();
+        }
+
+        public void OnDrag(PointerEventData eventData)
+        {
+            if (!_dragging || eventData == null)
+            {
+                return;
+            }
+
+            _dragDelta = eventData.position - _dragStartPosition;
+            _dragVisualOffset = DragOffsetFromScreenDelta(_dragDelta);
+            ApplyVisualPose();
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            if (!_dragging)
+            {
+                return;
+            }
+
+            Vector2 finalDelta = eventData != null ? eventData.position - _dragStartPosition : _dragDelta;
+            _dragging = false;
+            _dragDelta = Vector2.zero;
+            _dragVisualOffset = Vector3.zero;
+            ApplyVisualPose();
+            _onDragComplete?.Invoke(_row, _col, finalDelta);
         }
 
         public void OnPointerEnter(PointerEventData eventData)
@@ -370,6 +434,11 @@ namespace QuixoUnity.UI
                 selectionMarker.SetActive(false);
             }
 
+            if (dotMarker != null)
+            {
+                dotMarker.SetActive(false);
+            }
+
             if (GetComponent<Collider>() == null)
             {
                 gameObject.AddComponent<BoxCollider>();
@@ -389,7 +458,9 @@ namespace QuixoUnity.UI
             var target = VisualTarget;
             float scale = _hovered ? hoverScale : 1f;
             target.localScale = _baseVisualScale * scale;
-            target.localPosition = _baseVisualPosition + (_selected ? Vector3.up * selectedLift : Vector3.zero);
+            Vector3 selectionLift = _selected ? Vector3.up * selectedLift : Vector3.zero;
+            Vector3 dragLift = _dragging ? Vector3.up * (selectedLift * 0.55f) : Vector3.zero;
+            target.localPosition = _baseVisualPosition + selectionLift + dragLift + _dragVisualOffset;
             if (!_markAnimating)
             {
                 target.localRotation = _baseVisualRotation;
@@ -435,6 +506,34 @@ namespace QuixoUnity.UI
             SetObjectActive(player2Token, mark == PlayerMark.Player2);
         }
 
+        private void ApplyDotState(PlayerMark mark, QuixoDotOwner owner)
+        {
+            if (dotMarker == null)
+            {
+                return;
+            }
+
+            bool visible = mark != PlayerMark.None && owner != QuixoDotOwner.None;
+            dotMarker.SetActive(visible);
+            if (!visible)
+            {
+                return;
+            }
+
+            const float edge = 0.285f;
+            const float y = 0.500f;
+            Vector3 position = owner switch
+            {
+                QuixoDotOwner.Team1Player1 => new Vector3(0f, y, -edge),
+                QuixoDotOwner.Team1Player2 => new Vector3(0f, y, edge),
+                QuixoDotOwner.Team2Player1 => new Vector3(edge, y, 0f),
+                QuixoDotOwner.Team2Player2 => new Vector3(-edge, y, 0f),
+                _ => new Vector3(0f, y, 0f)
+            };
+
+            dotMarker.transform.localPosition = position;
+        }
+
         private void SetSelectionVisible(bool selected)
         {
             if (selectionRing != null)
@@ -451,8 +550,19 @@ namespace QuixoUnity.UI
         private void ApplyFlipPose(Transform target, float angle, float scale)
         {
             target.localScale = _baseVisualScale * scale;
-            target.localPosition = _baseVisualPosition + (_selected ? Vector3.up * selectedLift : Vector3.zero);
+            target.localPosition = _baseVisualPosition + (_selected ? Vector3.up * selectedLift : Vector3.zero) + _dragVisualOffset;
             target.localRotation = _baseVisualRotation * Quaternion.Euler(0f, angle, 0f);
+        }
+
+        private Vector3 DragOffsetFromScreenDelta(Vector2 delta)
+        {
+            if (delta.sqrMagnitude < 1f)
+            {
+                return Vector3.zero;
+            }
+
+            Vector2 direction = delta.normalized;
+            return new Vector3(direction.x, 0f, direction.y) * dragFeedbackDistance;
         }
 
         private static float EaseOutCubic(float t)

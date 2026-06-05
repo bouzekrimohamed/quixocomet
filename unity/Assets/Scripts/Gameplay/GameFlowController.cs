@@ -14,6 +14,7 @@ namespace QuixoUnity.Gameplay
     {
         private const string MenuSceneName = "MenuScene";
         private const float OnlinePollSeconds = 1f;
+        private const float DragMoveThresholdPixels = 34f;
 
         [SerializeField] private GameKind gameKind = GameKind.Quixo;
         [SerializeField] private BoardViewRenderer boardView = null!;
@@ -32,6 +33,10 @@ namespace QuixoUnity.Gameplay
         private OnlineMatchDto _onlineMatch;
         private Coroutine _onlinePollRoutine;
         private int _turnTimeSecondsForSession;
+        private int _turnIncrementSecondsForSession;
+        private string _turnTimeControlKeyForSession = string.Empty;
+        private string _activeClockKey = string.Empty;
+        private readonly Dictionary<string, float> _turnClocks = new();
         private bool _timerEventBound;
         private bool _gameOverShown;
         // Vrai si une perte par inactivite vient d'etre declenchee (local ou online).
@@ -53,6 +58,31 @@ namespace QuixoUnity.Gameplay
         {
             StopOnlinePolling();
             UnbindTimerEvent();
+        }
+
+        private void Update()
+        {
+            if (!_ready || gameKind != GameKind.Quixo || _selected == null)
+            {
+                return;
+            }
+
+            if (Input.GetKeyDown(KeyCode.UpArrow))
+            {
+                PlayDirection(MoveDirection.Up);
+            }
+            else if (Input.GetKeyDown(KeyCode.DownArrow))
+            {
+                PlayDirection(MoveDirection.Down);
+            }
+            else if (Input.GetKeyDown(KeyCode.LeftArrow))
+            {
+                PlayDirection(MoveDirection.Left);
+            }
+            else if (Input.GetKeyDown(KeyCode.RightArrow))
+            {
+                PlayDirection(MoveDirection.Right);
+            }
         }
 
         private void BindTimerEvent()
@@ -132,6 +162,7 @@ namespace QuixoUnity.Gameplay
             }
 
             var origin = _selected.Value;
+            QuixoDotOwner dotOwner = DotOwnerForNextQuixoMove();
             var payload = new OnlineMovePayload
             {
                 gameKind = OnlineSessionTransit.GameKindName(gameKind),
@@ -141,10 +172,12 @@ namespace QuixoUnity.Gameplay
                 action = "direction",
                 selectedRow = origin.x,
                 selectedCol = origin.y,
-                direction = direction.ToString()
+                direction = direction.ToString(),
+                dotOwner = dotOwner.ToString(),
+                dotOwnerUserId = OnlineSessionTransit.UserIdForDotOwner(dotOwner)
             };
 
-            bool moved = _rules.TryDirectionalMove(_state, origin.x, origin.y, direction);
+            bool moved = TryApplyQuixoDirectionalMove(origin.x, origin.y, direction, dotOwner, SessionManager.UserId);
             if (!moved)
             {
                 hudView.SetInfo("Mouvement invalide.");
@@ -181,24 +214,24 @@ namespace QuixoUnity.Gameplay
 
             if (_selected == null)
             {
-                if (!_rules.TrySelect(_state, row, col))
+                if (!TrySelectQuixoCell(row, col, SessionManager.UserId, out string errorMessage))
                 {
-                    hudView.SetInfo("Piece invalide.");
+                    hudView.SetInfo(errorMessage);
                     return;
                 }
 
                 _selected = new Vector2Int(row, col);
-                var directions = _rules.GetDirections(_state, row, col);
+                var directions = GetQuixoDirections(row, col);
                 hudView.SetDirections(directions);
                 hudView.SetInfo(SelectionMessage(directions));
                 boardView.Render(_state, _selected);
                 return;
             }
 
-            if (_rules.TrySelect(_state, row, col))
+            if (TrySelectQuixoCell(row, col, SessionManager.UserId, out _))
             {
                 _selected = new Vector2Int(row, col);
-                var directions = _rules.GetDirections(_state, row, col);
+                var directions = GetQuixoDirections(row, col);
                 hudView.SetDirections(directions);
                 hudView.SetInfo(SelectionMessage(directions));
                 boardView.Render(_state, _selected);
@@ -210,6 +243,53 @@ namespace QuixoUnity.Gameplay
                 boardView.Render(_state, null);
                 hudView.SetInfo("Selection annulee.");
             }
+        }
+
+        private void HandleCellDrag(int row, int col, Vector2 screenDelta)
+        {
+            if (!EnsureReady())
+            {
+                return;
+            }
+
+            if (!CanActLocally())
+            {
+                return;
+            }
+
+            if (gameKind != GameKind.Quixo)
+            {
+                return;
+            }
+
+            if (_state.Winner != PlayerMark.None)
+            {
+                hudView.SetInfo($"{WinnerMessageForCurrentMatch(_state.Winner)} Recommencez ou revenez au menu.");
+                return;
+            }
+
+            if (!TryDirectionFromDrag(screenDelta, out var direction))
+            {
+                hudView.SetInfo("Glissez plus franchement vers une direction.");
+                return;
+            }
+
+            if (_selected == null || _selected.Value.x != row || _selected.Value.y != col)
+            {
+                if (TrySelectQuixoCell(row, col, SessionManager.UserId, out string errorMessage))
+                {
+                    _selected = new Vector2Int(row, col);
+                    hudView.SetDirections(GetQuixoDirections(row, col));
+                    boardView.Render(_state, _selected);
+                }
+                else if (_selected == null)
+                {
+                    hudView.SetInfo(errorMessage);
+                    return;
+                }
+            }
+
+            PlayDirection(direction);
         }
 
         private void HandleQometCellClick(int row, int col)
@@ -286,10 +366,11 @@ namespace QuixoUnity.Gameplay
             SubmitOnlineMove(movePayload);
         }
 
-        private void EndTurn(Vector2Int fromCell, string successMessage = null)
+        private void EndTurn(Vector2Int fromCell, string successMessage = null, string movedClockKeyOverride = null)
         {
             var movedPlayer = _state.CurrentPlayer;
             var winner = _rules.EvaluateWinner(_state, movedPlayer);
+            StoreClockAfterMove(movedClockKeyOverride, winner == PlayerMark.None);
             _selected = null;
             hudView.SetDirections(new List<MoveDirection>());
             boardView.AnimateBoardChange(_state, fromCell);
@@ -378,12 +459,15 @@ namespace QuixoUnity.Gameplay
             _applyingOnlineMove = false;
             _lastAppliedMoveNumber = 0;
 
-            // On lit la duree du tour pour cette session. En online, on prend la valeur stockee
-            // dans OnlineSessionTransit (peuplee depuis le menu/invitation). Sinon, on lit la
-            // preference locale du joueur. 0 = sans limite.
-            _turnTimeSecondsForSession = OnlineSessionTransit.IsOnlineMatch && OnlineSessionTransit.TurnTimeSeconds > 0
-                ? OnlineSessionTransit.TurnTimeSeconds
-                : TurnTimerSettings.SelectedSeconds;
+            // On lit la cadence pour cette session. En online, elle vient du match Supabase.
+            // En local, elle vient du choix menu. 0+0 = sans limite.
+            var timeControl = OnlineSessionTransit.IsOnlineMatch && !string.IsNullOrWhiteSpace(OnlineSessionTransit.TimeControlKey)
+                ? TurnTimerSettings.OptionForNetwork(OnlineSessionTransit.TimeControlKey, OnlineSessionTransit.InitialSeconds, OnlineSessionTransit.IncrementSeconds)
+                : TurnTimerSettings.SelectedOption;
+            _turnTimeControlKeyForSession = timeControl.Key;
+            _turnTimeSecondsForSession = timeControl.InitialSeconds;
+            _turnIncrementSecondsForSession = timeControl.IncrementSeconds;
+            InitializeTurnClocks();
 
             hudView.Bind(this);
             hudView.SetGameKind(gameKind);
@@ -391,8 +475,10 @@ namespace QuixoUnity.Gameplay
             hudView.SetRestartEnabled(!OnlineSessionTransit.IsOnlineMatch);
             hudView.SetDirections(new List<MoveDirection>());
             BindTimerEvent();
-            boardView.Initialize(_state.Size, HandleCellClick, gameKind);
+            boardView.Initialize(_state.Size, HandleCellClick, gameKind, HandleCellDrag);
             boardView.Render(_state, null);
+            hudView.SetTeam2v2Hud(false, string.Empty);
+            boardView.SetTeamPositionLabels(string.Empty, string.Empty, string.Empty, string.Empty, false);
             hudView.SetTurn(_state.CurrentPlayer);
             if (gameKind == GameKind.Qomet && _rules is QometGameRulesAdapter qometRules)
             {
@@ -435,22 +521,38 @@ namespace QuixoUnity.Gameplay
                 return;
             }
 
+            string clockKey = CurrentClockKey();
+            if (string.IsNullOrWhiteSpace(clockKey))
+            {
+                hudView.StopTurnTimer();
+                return;
+            }
+
+            if (!_turnClocks.ContainsKey(clockKey))
+            {
+                _turnClocks[clockKey] = _turnTimeSecondsForSession;
+            }
+
+            _activeClockKey = clockKey;
             bool isLocalTurn;
+            string ownerLabel;
             if (IsOnlineGame)
             {
                 string turnId = string.IsNullOrWhiteSpace(_onlineMatch.current_turn_id)
                     ? _onlineMatch.player1_id
                     : _onlineMatch.current_turn_id;
                 isLocalTurn = turnId == SessionManager.UserId;
+                ownerLabel = isLocalTurn ? "Vous" : OnlineSessionTransit.UsernameForUser(turnId);
             }
             else
             {
                 // En local 2 joueurs : on considere toujours que le timer s'applique au joueur courant
                 // qui partage le clavier/souris avec son adversaire.
                 isLocalTurn = true;
+                ownerLabel = _state.CurrentPlayer == PlayerMark.Player1 ? "Joueur 1" : "Joueur 2";
             }
 
-            hudView.StartTurnTimer(_turnTimeSecondsForSession, isLocalTurn);
+            hudView.StartTurnTimer(_turnClocks[clockKey], isLocalTurn, ownerLabel, TurnTimerSettings.DisplayName(_turnTimeControlKeyForSession, _turnTimeSecondsForSession, _turnIncrementSecondsForSession));
         }
 
         private void HandleTurnTimedOut()
@@ -475,6 +577,11 @@ namespace QuixoUnity.Gameplay
 
             PlayerMark loser = _state.CurrentPlayer;
             PlayerMark winner = loser == PlayerMark.Player1 ? PlayerMark.Player2 : PlayerMark.Player1;
+            if (!string.IsNullOrWhiteSpace(_activeClockKey))
+            {
+                _turnClocks[_activeClockKey] = 0f;
+            }
+
             _lastLossWasTimeout = true;
             _state.SetWinner(winner);
             Debug.Log($"[Timer] Turn timed out. loser={loser} winner={winner} online={IsOnlineGame}");
@@ -525,6 +632,9 @@ namespace QuixoUnity.Gameplay
                 team2_player2_id = OnlineSessionTransit.Team2Player2Id,
                 current_turn_id = currentTurnId,
                 current_turn_index = OnlineSessionTransit.CurrentTurnIndex,
+                time_control_key = _turnTimeControlKeyForSession,
+                initial_seconds = _turnTimeSecondsForSession,
+                increment_seconds = _turnIncrementSecondsForSession,
                 status = "active"
             };
 
@@ -566,18 +676,19 @@ namespace QuixoUnity.Gameplay
             while (IsOnlineGame && SessionManager.IsOnline)
             {
                 bool matchDone = false;
+                bool matchSnapshotUpdated = false;
                 onlineMatchService.FetchMatch(_onlineMatch.id, result =>
                 {
                     if (result != null && result.Success && result.Match != null)
                     {
                         _onlineMatch = result.Match;
                         OnlineSessionTransit.UpdateMatch(_onlineMatch);
+                        matchSnapshotUpdated = true;
                         if (_onlineMatch.current_turn_id != lastLoggedTurn)
                         {
                             lastLoggedTurn = _onlineMatch.current_turn_id;
                             Debug.Log($"[Online] Poll match {_onlineMatch.id} turn={_onlineMatch.current_turn_id} status={_onlineMatch.status} winner={_onlineMatch.winner_id}");
                         }
-                        ApplyOnlineMatchStatus();
                     }
 
                     matchDone = true;
@@ -594,6 +705,11 @@ namespace QuixoUnity.Gameplay
                 yield return new WaitUntil(() => movesDone);
 
                 ApplyFetchedMoves(moves);
+                if (matchSnapshotUpdated)
+                {
+                    ApplyOnlineMatchStatus();
+                }
+
                 if (_onlineMatch != null && _onlineMatch.status == "finished")
                 {
                     _onlinePollRoutine = null;
@@ -647,14 +763,20 @@ namespace QuixoUnity.Gameplay
             _state.SetCurrentPlayer(OnlineSessionTransit.PlayerMarkForUser(move.player_id));
             bool applied = false;
             var payload = move.move_payload;
+            if (string.IsNullOrWhiteSpace(payload.playerId))
+            {
+                payload.playerId = move.player_id;
+            }
+
             if (gameKind == GameKind.Quixo)
             {
                 if (Enum.TryParse(payload.direction, out MoveDirection direction))
                 {
-                    applied = _rules.TryDirectionalMove(_state, payload.selectedRow, payload.selectedCol, direction);
+                    QuixoDotOwner dotOwner = DotOwnerFromPayload(payload);
+                    applied = TryApplyQuixoDirectionalMove(payload.selectedRow, payload.selectedCol, direction, dotOwner, move.player_id);
                     if (applied)
                     {
-                        EndTurn(new Vector2Int(payload.selectedRow, payload.selectedCol), "Coup adverse recu.");
+                        EndTurn(new Vector2Int(payload.selectedRow, payload.selectedCol), "Coup adverse recu.", move.player_id);
                     }
                 }
             }
@@ -665,7 +787,7 @@ namespace QuixoUnity.Gameplay
                     applied = qometRules.TryPlace(_state, payload.toRow, payload.toCol);
                     if (applied)
                     {
-                        EndTurn(new Vector2Int(payload.toRow, payload.toCol), $"Coup adverse recu. {qometRules.ReserveStatus()}");
+                        EndTurn(new Vector2Int(payload.toRow, payload.toCol), $"Coup adverse recu. {qometRules.ReserveStatus()}", move.player_id);
                     }
                 }
                 else
@@ -673,7 +795,7 @@ namespace QuixoUnity.Gameplay
                     applied = qometRules.TryMoveToCell(_state, payload.fromRow, payload.fromCol, payload.toRow, payload.toCol);
                     if (applied)
                     {
-                        EndTurn(new Vector2Int(payload.fromRow, payload.fromCol), $"Coup adverse recu. {qometRules.ReserveStatus()}");
+                        EndTurn(new Vector2Int(payload.fromRow, payload.fromCol), $"Coup adverse recu. {qometRules.ReserveStatus()}", move.player_id);
                     }
                 }
             }
@@ -682,7 +804,7 @@ namespace QuixoUnity.Gameplay
             if (!applied)
             {
                 Debug.LogWarning($"[Online] Move #{move.move_number} from {move.player_id} could not be applied locally. payload={JsonUtility.ToJson(move.move_payload)}");
-                hudView.SetInfo("Coup online recu mais non applicable. Resynchronisation en attente.");
+                hudView.SetInfo("Coup en ligne recu mais non applicable. Resynchronisation en attente.");
             }
             else
             {
@@ -726,7 +848,7 @@ namespace QuixoUnity.Gameplay
                 _onlineSubmitting = false;
                 if (result == null || !result.Success)
                 {
-                    hudView.SetInfo(result != null ? result.Message : "Envoi du coup online impossible.");
+                    hudView.SetInfo(result != null ? result.Message : "Envoi du coup en ligne impossible.");
                     return;
                 }
 
@@ -853,6 +975,7 @@ namespace QuixoUnity.Gameplay
                     ? "A vous de jouer"
                     : localTeam == activeTeam ? "Tour de votre coequipier" : "Tour de l'adversaire";
                 hudView.SetTurn(_state.CurrentPlayer, isMyTurn ? "A vous de jouer" : $"Tour : {activeName}");
+                UpdateTeam2v2PositionUi(turnId, relation);
                 hudView.SetInfo(
                     $"Mode : Quixo equipe 2v2 | Equipe 1 : {OnlineSessionTransit.TeamLabel(TeamId.Team1)} | Equipe 2 : {OnlineSessionTransit.TeamLabel(TeamId.Team2)} | {relation}.");
 
@@ -871,11 +994,13 @@ namespace QuixoUnity.Gameplay
             string opponent = string.IsNullOrWhiteSpace(OnlineSessionTransit.OpponentUsername)
                 ? "adversaire"
                 : OnlineSessionTransit.OpponentUsername;
+            hudView.SetTeam2v2Hud(false, string.Empty);
+            boardView.SetTeamPositionLabels(string.Empty, string.Empty, string.Empty, string.Empty, false);
             string turnLabel = isMyTurn ? "A vous de jouer" : $"Tour de {opponent}";
             hudView.SetTurn(_state.CurrentPlayer, turnLabel);
             hudView.SetInfo(isMyTurn
-                ? $"Online vs {opponent} : a vous de jouer."
-                : $"Online vs {opponent} : tour de l'adversaire.");
+                ? $"En ligne contre {opponent} : a vous de jouer."
+                : $"En ligne contre {opponent} : tour de l'adversaire.");
 
             // Le timer ne doit etre relance QUE quand le tour change. Sans cette garde, chaque
             // poll (1s) remettrait le compte a rebours a fond.
@@ -887,6 +1012,91 @@ namespace QuixoUnity.Gameplay
                     RestartTimerForCurrentPlayer();
                 }
             }
+        }
+
+        private void InitializeTurnClocks()
+        {
+            _turnClocks.Clear();
+            _activeClockKey = string.Empty;
+            if (_turnTimeSecondsForSession <= 0)
+            {
+                return;
+            }
+
+            if (OnlineSessionTransit.IsOnlineMatch)
+            {
+                AddClock(OnlineSessionTransit.Player1Id);
+                AddClock(OnlineSessionTransit.Player2Id);
+                AddClock(OnlineSessionTransit.Team1Player1Id);
+                AddClock(OnlineSessionTransit.Team1Player2Id);
+                AddClock(OnlineSessionTransit.Team2Player1Id);
+                AddClock(OnlineSessionTransit.Team2Player2Id);
+                return;
+            }
+
+            AddClock(ClockKeyForPlayer(PlayerMark.Player1));
+            AddClock(ClockKeyForPlayer(PlayerMark.Player2));
+        }
+
+        private void AddClock(string key)
+        {
+            if (!string.IsNullOrWhiteSpace(key) && !_turnClocks.ContainsKey(key))
+            {
+                _turnClocks[key] = _turnTimeSecondsForSession;
+            }
+        }
+
+        private string CurrentClockKey()
+        {
+            if (IsOnlineGame)
+            {
+                string turnId = string.IsNullOrWhiteSpace(_onlineMatch.current_turn_id)
+                    ? _onlineMatch.player1_id
+                    : _onlineMatch.current_turn_id;
+                return turnId;
+            }
+
+            return ClockKeyForPlayer(_state.CurrentPlayer);
+        }
+
+        private static string ClockKeyForPlayer(PlayerMark player)
+        {
+            return player == PlayerMark.Player2 ? "local_player_2" : "local_player_1";
+        }
+
+        private void StoreClockAfterMove(string movedClockKeyOverride, bool addIncrement)
+        {
+            if (_turnTimeSecondsForSession <= 0)
+            {
+                return;
+            }
+
+            string key = !string.IsNullOrWhiteSpace(movedClockKeyOverride)
+                ? movedClockKeyOverride
+                : CurrentClockKey();
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return;
+            }
+
+            float remaining = _turnClocks.TryGetValue(key, out float saved)
+                ? saved
+                : _turnTimeSecondsForSession;
+            if (!string.IsNullOrWhiteSpace(_activeClockKey)
+                && string.Equals(_activeClockKey, key, StringComparison.Ordinal)
+                && hudView != null)
+            {
+                remaining = hudView.CurrentTurnTimeRemaining;
+            }
+
+            remaining = Mathf.Max(0f, remaining);
+            if (addIncrement && _turnIncrementSecondsForSession > 0)
+            {
+                remaining += _turnIncrementSecondsForSession;
+            }
+
+            _turnClocks[key] = remaining;
+            _activeClockKey = string.Empty;
         }
 
         private void StopOnlinePolling()
@@ -969,6 +1179,45 @@ namespace QuixoUnity.Gameplay
             }
 
             return OnlineSessionTransit.TeamName(winner == PlayerMark.Player1 ? TeamId.Team1 : TeamId.Team2);
+        }
+
+        private void UpdateTeam2v2PositionUi(string turnId, string relation)
+        {
+            if (!OnlineSessionTransit.IsTeam2v2 || hudView == null || boardView == null)
+            {
+                return;
+            }
+
+            string localUserId = SessionManager.UserId;
+            TeamId localTeam = OnlineSessionTransit.TeamForUser(localUserId);
+            string teamMark = localTeam == TeamId.Team1 ? "X" : localTeam == TeamId.Team2 ? "O" : "?";
+            string teammateId = OnlineSessionTransit.TeammateOf(localUserId);
+            TeamId opposingTeam = OnlineSessionTransit.OpposingTeam(localTeam);
+            string opponents = opposingTeam == TeamId.Team1
+                ? $"{OnlineSessionTransit.UsernameForUser(OnlineSessionTransit.Team1Player1Id)} + {OnlineSessionTransit.UsernameForUser(OnlineSessionTransit.Team1Player2Id)}"
+                : $"{OnlineSessionTransit.UsernameForUser(OnlineSessionTransit.Team2Player1Id)} + {OnlineSessionTransit.UsernameForUser(OnlineSessionTransit.Team2Player2Id)}";
+
+            string info =
+                $"Vous : {OnlineSessionTransit.BoardSideForUser(localUserId)} | Equipe : {teamMark}\n"
+                + $"Coequipier : {OnlineSessionTransit.UsernameForUser(teammateId)}\n"
+                + $"Adversaires : {opponents}\n"
+                + $"Joueur actif : {OnlineSessionTransit.UsernameForUser(turnId)}\n"
+                + relation;
+            hudView.SetTeam2v2Hud(true, info);
+
+            boardView.SetTeamPositionLabels(
+                PositionLabel(OnlineSessionTransit.Team1Player1Id, "Bas"),
+                PositionLabel(OnlineSessionTransit.Team2Player1Id, "Droite"),
+                PositionLabel(OnlineSessionTransit.Team1Player2Id, "Haut"),
+                PositionLabel(OnlineSessionTransit.Team2Player2Id, "Gauche"),
+                true);
+        }
+
+        private static string PositionLabel(string userId, string side)
+        {
+            string name = OnlineSessionTransit.UsernameForUser(userId);
+            string suffix = userId == SessionManager.UserId ? " (vous)" : string.Empty;
+            return $"{side} : {name}{suffix}";
         }
 
         private void ShowGameOver(PlayerMark winner)
@@ -1065,6 +1314,128 @@ namespace QuixoUnity.Gameplay
             };
         }
 
+        private bool TrySelectQuixoCell(int row, int col, string userId, out string message)
+        {
+            message = "Piece invalide.";
+            if (_state == null || gameKind != GameKind.Quixo)
+            {
+                return false;
+            }
+
+            if (!OnlineSessionTransit.IsTeam2v2)
+            {
+                bool ok = _rules.TrySelect(_state, row, col);
+                if (!ok)
+                {
+                    message = "Choisissez un cube de bordure neutre ou a votre marque.";
+                }
+
+                return ok;
+            }
+
+            if (!QuixoRules.IsBorder(_state.Size, row, col))
+            {
+                message = "En 2v2, seul un cube en bordure peut etre saisi.";
+                return false;
+            }
+
+            PlayerMark mark = _state.Cells[row, col];
+            if (mark == PlayerMark.None)
+            {
+                return true;
+            }
+
+            TeamId localTeam = OnlineSessionTransit.TeamForUser(userId);
+            PlayerMark localMark = localTeam == TeamId.Team1 ? PlayerMark.Player1 : localTeam == TeamId.Team2 ? PlayerMark.Player2 : PlayerMark.None;
+            if (localMark == PlayerMark.None)
+            {
+                message = "Joueur 2v2 introuvable dans ce match.";
+                return false;
+            }
+
+            if (mark != localMark)
+            {
+                message = "Vous ne pouvez jamais saisir un cube adverse.";
+                return false;
+            }
+
+            QuixoDotOwner requiredOwner = OnlineSessionTransit.DotOwnerForUser(userId);
+            QuixoDotOwner cellOwner = _state.DotOwners[row, col];
+            if (cellOwner != requiredOwner)
+            {
+                string side = OnlineSessionTransit.BoardSideForDotOwner(cellOwner);
+                message = cellOwner == QuixoDotOwner.None
+                    ? "Ce cube n'a pas de point 2v2 valide."
+                    : $"Ce cube appartient a votre equipe, mais son point pointe vers {side}.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private IReadOnlyList<MoveDirection> GetQuixoDirections(int row, int col)
+        {
+            if (!TrySelectQuixoCell(row, col, SessionManager.UserId, out _))
+            {
+                return new List<MoveDirection>();
+            }
+
+            return QuixoRules.AllowedDirections(_state, row, col);
+        }
+
+        private bool TryApplyQuixoDirectionalMove(int row, int col, MoveDirection direction, QuixoDotOwner dotOwner, string userId)
+        {
+            if (_state == null)
+            {
+                return false;
+            }
+
+            if (!TrySelectQuixoCell(row, col, userId, out _))
+            {
+                return false;
+            }
+
+            return QuixoRules.ApplyMoveWithDot(_state, row, col, direction, OnlineSessionTransit.IsTeam2v2 ? dotOwner : QuixoDotOwner.None);
+        }
+
+        private QuixoDotOwner DotOwnerForNextQuixoMove()
+        {
+            if (!OnlineSessionTransit.IsTeam2v2)
+            {
+                return QuixoDotOwner.None;
+            }
+
+            string ownerUserId = hudView != null && hudView.DotTowardTeammate
+                ? OnlineSessionTransit.TeammateOf(SessionManager.UserId)
+                : SessionManager.UserId;
+            QuixoDotOwner owner = OnlineSessionTransit.DotOwnerForUser(ownerUserId);
+            return owner == QuixoDotOwner.None ? OnlineSessionTransit.DotOwnerForUser(SessionManager.UserId) : owner;
+        }
+
+        private static QuixoDotOwner DotOwnerFromPayload(OnlineMovePayload payload)
+        {
+            if (payload == null)
+            {
+                return QuixoDotOwner.None;
+            }
+
+            if (OnlineSessionTransit.TryParseDotOwner(payload.dotOwner, out var owner) && owner != QuixoDotOwner.None)
+            {
+                return owner;
+            }
+
+            if (!string.IsNullOrWhiteSpace(payload.dotOwnerUserId))
+            {
+                owner = OnlineSessionTransit.DotOwnerForUser(payload.dotOwnerUserId);
+                if (owner != QuixoDotOwner.None)
+                {
+                    return owner;
+                }
+            }
+
+            return OnlineSessionTransit.DotOwnerForUser(payload.playerId);
+        }
+
         private static string OpeningMessage(GameKind kind)
         {
             return kind == GameKind.Quixo
@@ -1079,7 +1450,27 @@ namespace QuixoUnity.Gameplay
                 return "Piece selectionnee.";
             }
 
-            return "Piece selectionnee. Choisissez une direction.";
+            return "Piece selectionnee. Choisissez une direction, utilisez les fleches ou glissez.";
+        }
+
+        private static bool TryDirectionFromDrag(Vector2 delta, out MoveDirection direction)
+        {
+            direction = MoveDirection.Up;
+            if (delta.sqrMagnitude < DragMoveThresholdPixels * DragMoveThresholdPixels)
+            {
+                return false;
+            }
+
+            if (Mathf.Abs(delta.x) > Mathf.Abs(delta.y))
+            {
+                direction = delta.x > 0f ? MoveDirection.Right : MoveDirection.Left;
+            }
+            else
+            {
+                direction = delta.y > 0f ? MoveDirection.Up : MoveDirection.Down;
+            }
+
+            return true;
         }
 
         private static string WinnerMessage(PlayerMark winner, GameKind kind)

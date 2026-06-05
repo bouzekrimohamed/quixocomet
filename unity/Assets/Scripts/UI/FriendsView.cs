@@ -75,7 +75,7 @@ namespace QuixoUnity.UI
             string raw = Read(usernameInput);
             if (string.IsNullOrWhiteSpace(raw))
             {
-                SetStatus("Entrez un username.");
+                SetStatus("Entrez un pseudo.");
                 return;
             }
 
@@ -204,7 +204,7 @@ namespace QuixoUnity.UI
             if (onlinePresenceService == null || onlineMatchService == null)
             {
                 ClearList(invitesContainer);
-                CreateInfoRow(invitesContainer, "Service online indisponible.");
+                CreateInfoRow(invitesContainer, "Service en ligne indisponible.");
                 SetStatus("Amis a jour.");
                 return;
             }
@@ -272,7 +272,8 @@ namespace QuixoUnity.UI
                 var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
                 var row = CreateRow(invitesContainer, palette);
                 CreateRowDot(row.transform, palette, false, hidden: true);
-                CreateRowLabel(row.transform, $"Invitation acceptee par {ResolveFriendName(invite.to_user_id)}", palette.UiText, palette, flex: true);
+                string cadence = TurnTimerSettings.DisplayName(invite.time_control_key, invite.initial_seconds, invite.increment_seconds);
+                CreateRowLabel(row.transform, $"Invitation acceptee par {ResolveFriendName(invite.to_user_id)} - {cadence}", palette.UiText, palette, flex: true);
                 var join = CreateRowButton(row.transform, "Rejoindre", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
                 join.onClick.AddListener(() => JoinAcceptedInvite(invite));
             }
@@ -309,7 +310,8 @@ namespace QuixoUnity.UI
             CreateRowDot(row.transform, palette, false, hidden: true);
             string fromName = ResolveFriendName(invite.from_user_id);
             string kind = string.IsNullOrWhiteSpace(invite.game_kind) ? "Quixo" : invite.game_kind;
-            CreateRowLabel(row.transform, $"{fromName} t'invite a jouer {kind}", palette.UiText, palette, flex: true);
+            string cadence = TurnTimerSettings.DisplayName(invite.time_control_key, invite.initial_seconds, invite.increment_seconds);
+            CreateRowLabel(row.transform, $"{fromName} t'invite a jouer {kind} - {cadence}", palette.UiText, palette, flex: true);
 
             var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
             var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
@@ -380,7 +382,7 @@ namespace QuixoUnity.UI
             }
 
             SetBusy(true);
-            SetStatus($"Invitation {OnlineSessionTransit.GameKindName(kind)}...");
+            SetStatus($"Invitation {OnlineSessionTransit.GameKindName(kind)} - cadence {TurnTimerSettings.DisplayCurrent()}...");
             onlineMatchService.SendInvite(friend.UserId, kind, result =>
             {
                 SetBusy(false);
@@ -416,10 +418,6 @@ namespace QuixoUnity.UI
                 }
 
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.from_user_id));
-                // V1 online ami : le timer choisi cote receveur est utilise par sa propre instance.
-                // Limitation V1 : la duree n'est pas serialisee via Supabase, donc deux clients
-                // peuvent avoir des reglages differents. Documente dans SUPABASE_SETUP.md.
-                OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds;
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
                 if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
@@ -482,8 +480,6 @@ namespace QuixoUnity.UI
 
                 Debug.Log($"[Online] Accepted invite (sender side) {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.to_user_id));
-                // Cote sender (createur de l'invitation) : on utilise aussi notre propre timer.
-                OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds;
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
                 if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))

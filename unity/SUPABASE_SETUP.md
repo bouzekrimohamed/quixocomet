@@ -277,6 +277,9 @@ create table if not exists public.match_invites (
   game_kind text not null,
   status text not null default 'pending',
   match_id uuid,
+  time_control_key text not null default '5+3',
+  initial_seconds int not null default 300,
+  increment_seconds int not null default 3,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint match_invites_game_kind_check check (game_kind in ('Quixo', 'Qomet')),
@@ -290,6 +293,9 @@ create table if not exists public.matchmaking_queue (
   game_kind text not null,
   status text not null default 'waiting',
   match_id uuid,
+  time_control_key text not null default '5+3',
+  initial_seconds int not null default 300,
+  increment_seconds int not null default 3,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique(user_id, game_kind),
@@ -305,6 +311,9 @@ create table if not exists public.online_matches (
   current_turn_id uuid not null references public.profiles(id),
   status text not null default 'active',
   winner_id uuid references public.profiles(id),
+  time_control_key text not null default '5+3',
+  initial_seconds int not null default 300,
+  increment_seconds int not null default 3,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint online_matches_game_kind_check check (game_kind in ('Quixo', 'Qomet')),
@@ -509,7 +518,7 @@ Pour une V2 plus robuste, ajouter :
 - Supabase Realtime WebSocket;
 - reconnexion;
 - abandon de partie;
-- timer;
+- timer arbitre cote serveur;
 - classement.
 
 ## 10. Migration Quixo equipe 2v2
@@ -526,7 +535,10 @@ alter table public.online_matches
   add column if not exists team2_player1_id uuid references public.profiles(id) on delete cascade,
   add column if not exists team2_player2_id uuid references public.profiles(id) on delete cascade,
   add column if not exists current_turn_index int not null default 0,
-  add column if not exists winner_team text;
+  add column if not exists winner_team text,
+  add column if not exists time_control_key text not null default '5+3',
+  add column if not exists initial_seconds int not null default 300,
+  add column if not exists increment_seconds int not null default 3;
 
 alter table public.online_matches
   drop constraint if exists online_matches_match_mode_check,
@@ -589,6 +601,9 @@ create table if not exists public.online_lobbies (
   host_user_id uuid not null references public.profiles(id) on delete cascade,
   status text not null default 'lobby',
   match_id uuid references public.online_matches(id) on delete set null,
+  time_control_key text not null default '5+3',
+  initial_seconds int not null default 300,
+  increment_seconds int not null default 3,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint online_lobbies_game_kind_check check (game_kind = 'Quixo'),
@@ -1029,51 +1044,53 @@ signup est absent ou non autorise dans Supabase Redirect URLs.
 
 Ne jamais mettre la cle `service_role` dans Unity.
 
-## 13. Timer de tour (V1)
+## 13. Cadences de partie
 
-### Aucune migration SQL n'est requise
+Le timer utilise maintenant des cadences type echecs : `1+0`, `5+3`, `10+5`,
+etc. Le premier nombre est le temps initial en minutes, le second est
+l'increment ajoute apres chaque coup valide. `Sans limite` correspond a `0+0`.
 
-Le timer de tour est entierement gere cote client Unity. Aucune colonne n'est
-ajoutee aux tables `online_matches`, `online_moves`, `matchmaking_queue` ou
-`match_invites`.
+### Migration SQL pour une base deja existante
 
-### Comment marche le timer
+Executer ce bloc si les tables online existaient deja avant cette version :
 
-- L'utilisateur choisit `Sans limite`, `15s`, `30s` ou `60s` dans le menu, avant
-  de lancer une partie. Le choix est persiste via `PlayerPrefs`
-  (`Quixo.TurnTimerSeconds`).
-- En partie locale 2 joueurs : un compte a rebours est lance pour le joueur
-  courant. S'il expire, l'autre joueur gagne par inactivite.
-- En partie en ligne : chaque client lance son propre timer quand c'est son
-  tour. A l'expiration, le client qui a perdu envoie via Supabase un PATCH sur
-  `online_matches` (`status=finished`, `winner_id=opponent`). L'autre client
-  detecte le passage en `finished` via son polling habituel et affiche la fin
-  de partie.
+```sql
+alter table public.match_invites
+  add column if not exists time_control_key text not null default '5+3',
+  add column if not exists initial_seconds int not null default 300,
+  add column if not exists increment_seconds int not null default 3;
 
-### Limite V1 documentee
+alter table public.matchmaking_queue
+  add column if not exists time_control_key text not null default '5+3',
+  add column if not exists initial_seconds int not null default 300,
+  add column if not exists increment_seconds int not null default 3;
 
-- La duree n'est pas serialisee dans la base. Chaque client utilise sa propre
-  preference locale. En pratique : pour une partie entre amis ou un
-  matchmaking aleatoire, si A a choisi 30s et B a choisi 60s, alors chaque
-  client applique son propre timer pour ses propres tours.
-- En matchmaking aleatoire, si l'utilisateur a choisi "Sans limite", la valeur
-  par defaut `30s` est appliquee pour eviter une partie qui ne se termine
-  jamais. C'est fait dans `MainMenuController.StartOnlineGame`.
-- Une V2 robuste passerait par une colonne `turn_time_seconds` dans
-  `online_matches` + une mise a jour du DTO `OnlineMatchDto`. Le passage est
-  documente mais non implemente pour rester compatible avec les matchs deja
-  crees.
+alter table public.online_matches
+  add column if not exists time_control_key text not null default '5+3',
+  add column if not exists initial_seconds int not null default 300,
+  add column if not exists increment_seconds int not null default 3;
+
+alter table public.online_lobbies
+  add column if not exists time_control_key text not null default '5+3',
+  add column if not exists initial_seconds int not null default 300,
+  add column if not exists increment_seconds int not null default 3;
+```
+
+### Comportement Unity
+
+- En local, les deux joueurs partagent la cadence choisie dans le menu.
+- En invitation ami, l'invitant choisit la cadence. Le match cree au moment de
+  l'acceptation reprend cette cadence.
+- En matchmaking aleatoire, la file d'attente filtre aussi
+  `time_control_key` : deux joueurs ne matchent ensemble que s'ils cherchent la
+  meme cadence.
+- En lobby Quixo 2v2, l'hote choisit la cadence lors de la creation du salon ;
+  le match 2v2 reprend ensuite les champs du salon.
+- Chaque joueur garde son propre temps restant cote Unity. Apres un coup valide,
+  l'increment est ajoute au joueur qui vient de jouer.
 
 ### RLS et securite
 
-Le timer ne change aucune policy. Les regles RLS existantes
-(`online_matches_update_participants`, `online_moves_insert_current_turn`)
-restent suffisantes :
-
-- Le client qui perd au temps envoie un PATCH `online_matches` avec
-  `winner_id` = id adverse. La policy autorise un participant a modifier le
-  match.
-- Aucun nouveau coup n'est insere dans `online_moves` pour le timeout. Le
-  match se termine simplement sur changement de statut.
-
-Aucune cle `service_role` n'est ajoutee.
+Aucune policy RLS supplementaire n'est necessaire : les colonnes de cadence
+sont inserees ou lues avec les memes droits que les invitations, queues,
+salons et matchs. Aucune cle `service_role` n'est ajoutee.

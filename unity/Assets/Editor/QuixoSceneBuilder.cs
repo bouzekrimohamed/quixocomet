@@ -41,7 +41,7 @@ namespace QuixoUnity.EditorTools
             {
                 EditorUtility.DisplayDialog(
                     "Quixo",
-                    "Stop Play Mode before creating or repairing scenes.",
+                    "Arretez le mode Lecture avant de creer ou reparer les scenes.",
                     "OK");
                 return;
             }
@@ -58,7 +58,7 @@ namespace QuixoUnity.EditorTools
             AssetDatabase.Refresh();
             EditorUtility.DisplayDialog(
                 "Quixo",
-                "IntroVideoScene, SplashScene, AuthScene, MenuScene et GameplayScene ont ete creees ou reparees. Ouvrez IntroVideoScene puis appuyez sur Play.",
+                "IntroVideoScene, SplashScene, AuthScene, MenuScene et GameplayScene ont ete creees ou reparees. Ouvrez IntroVideoScene puis lancez la lecture.",
                 "OK");
         }
 
@@ -128,7 +128,7 @@ namespace QuixoUnity.EditorTools
             SetAnchored(contentRect, new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(760f, 280f));
             var contentGroup = content.AddComponent<CanvasGroup>();
 
-            var powered = CreateText(content.transform, "PoweredLabel", "POWERED BY", 30f, TextAlignmentOptions.Center, palette.UiMuted,
+            var powered = CreateText(content.transform, "PoweredLabel", "REALISE PAR", 30f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 0.5f), new Vector2(0f, 48f), new Vector2(720f, 52f));
             var name = CreateText(content.transform, "NameLabel", "MOHAMED BOUZEKRI", 54f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 0.5f), new Vector2(0f, -22f), new Vector2(720f, 76f));
@@ -172,18 +172,18 @@ namespace QuixoUnity.EditorTools
             CreateText(panel.transform, "Subtitle", "Espace joueur", 21f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -112f), new Vector2(610f, 42f));
 
-            var showSignInButton = CreateButton(panel.transform, "ShowSignInButton", "Sign In", palette.UiButton,
+            var showSignInButton = CreateButton(panel.transform, "ShowSignInButton", "Connexion", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(-190f, -174f), new Vector2(170f, 48f), palette.UiButtonText, palette.UiButtonDisabled);
-            var showSignUpButton = CreateButton(panel.transform, "ShowSignUpButton", "Sign Up", palette.UiButtonSecondary,
+            var showSignUpButton = CreateButton(panel.transform, "ShowSignUpButton", "Inscription", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(0f, -174f), new Vector2(170f, 48f), palette.UiButtonText, palette.UiButtonDisabled);
-            var showGuestButton = CreateButton(panel.transform, "ShowGuestButton", "Guest", palette.UiButtonSecondary,
+            var showGuestButton = CreateButton(panel.transform, "ShowGuestButton", "Invite", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(190f, -174f), new Vector2(170f, 48f), palette.UiButtonText, palette.UiButtonDisabled);
 
             var signInPanel = CreateAuthModePanel(panel.transform, "SignInPanel", new Vector2(560f, 390f),
                 new Vector2(0.5f, 1f), new Vector2(0f, -250f));
             CreateText(signInPanel.transform, "SignInTitle", "Connexion", 30f, TextAlignmentOptions.Left, palette.UiText,
                 new Vector2(0f, 1f), new Vector2(0f, -4f), new Vector2(520f, 48f));
-            var signInCredentialInput = CreateInput(signInPanel.transform, "SignInCredentialInput", "Email ou username", false,
+            var signInCredentialInput = CreateInput(signInPanel.transform, "SignInCredentialInput", "Email ou pseudo", false,
                 new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(500f, 58f), palette);
             var signInPasswordInput = CreateInput(signInPanel.transform, "SignInPasswordInput", "Mot de passe", true,
                 new Vector2(0.5f, 1f), new Vector2(-45f, -158f), new Vector2(410f, 58f), palette);
@@ -202,7 +202,7 @@ namespace QuixoUnity.EditorTools
                 new Vector2(0f, 1f), new Vector2(0f, -4f), new Vector2(520f, 48f));
             var signUpEmailInput = CreateInput(signUpPanel.transform, "SignUpEmailInput", "Email", false,
                 new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(500f, 58f), palette);
-            var signUpUsernameInput = CreateInput(signUpPanel.transform, "SignUpUsernameInput", "Username", false,
+            var signUpUsernameInput = CreateInput(signUpPanel.transform, "SignUpUsernameInput", "Pseudo", false,
                 new Vector2(0.5f, 1f), new Vector2(0f, -158f), new Vector2(500f, 58f), palette);
             var signUpPasswordInput = CreateInput(signUpPanel.transform, "SignUpPasswordInput", "Mot de passe", true,
                 new Vector2(0.5f, 1f), new Vector2(-45f, -234f), new Vector2(410f, 58f), palette);
@@ -280,7 +280,7 @@ namespace QuixoUnity.EditorTools
 
             CreateText(panel.transform, "Title", "Quixo / Qomet", 48f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -58f), new Vector2(560f, 68f));
-            CreateText(panel.transform, "Subtitle", "Jeu de strategie local et online", 22f, TextAlignmentOptions.Center, palette.UiMuted,
+            CreateText(panel.transform, "Subtitle", "Jeu de strategie local et en ligne", 22f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -116f), new Vector2(560f, 40f));
             var connected = CreateText(panel.transform, "ConnectedLabel", "Connecte : Invite", 19f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -160f), new Vector2(560f, 32f));
@@ -318,9 +318,9 @@ namespace QuixoUnity.EditorTools
                 new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(420f, 56f), palette.UiButtonText, palette.UiButtonDisabled);
             var qometButton = CreateButton(gamePanel.transform, "QometButton", "Qomet", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(0f, -152f), new Vector2(420f, 56f), palette.UiButtonText, palette.UiButtonDisabled);
-            var quixoOnlineButton = CreateButton(gamePanel.transform, "QuixoOnlineButton", "Matchmaking Quixo", palette.UiButton,
+            var quixoOnlineButton = CreateButton(gamePanel.transform, "QuixoOnlineButton", "Recherche Quixo", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -82f), new Vector2(420f, 56f), palette.UiButtonText, palette.UiButtonDisabled);
-            var qometOnlineButton = CreateButton(gamePanel.transform, "QometOnlineButton", "Matchmaking Qomet", palette.UiButtonSecondary,
+            var qometOnlineButton = CreateButton(gamePanel.transform, "QometOnlineButton", "Recherche Qomet", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(0f, -152f), new Vector2(420f, 56f), palette.UiButtonText, palette.UiButtonDisabled);
             var quixoTeamOnlineButton = CreateButton(gamePanel.transform, "QuixoTeamOnlineButton", "Quixo equipe 2v2", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -222f), new Vector2(420f, 56f), palette.UiButtonText, palette.UiButtonDisabled);
@@ -479,6 +479,8 @@ namespace QuixoUnity.EditorTools
             AssignColor(boardView, "generatedPlayer1Color", palette.Player1);
             AssignColor(boardView, "generatedPlayer2Color", palette.Player2);
             AssignFloat(boardView, "generatedMarkFontSize", palette.MarkFontSize);
+            AssignFloat(boardView, "spacing", 1.14f);
+            AssignFloat(boardView, "moveAnimDuration", 0.22f);
             AssignObject(boardView, "generatedMaterialShader", GetSafeBoardShader());
         }
 
@@ -509,10 +511,10 @@ namespace QuixoUnity.EditorTools
 
             CreateText(panel.transform, "FriendsTitle", "Amis et invitations", 32f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(680f, 44f));
-            CreateText(panel.transform, "FriendsSubtitle", "Ajoutez un ami par username et voyez les invitations recues.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
+            CreateText(panel.transform, "FriendsSubtitle", "Ajoutez un ami par pseudo et voyez les invitations recues.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -92f), new Vector2(680f, 22f));
 
-            CreateInput(panel.transform, "FriendUsernameInput", "username ami", false,
+            CreateInput(panel.transform, "FriendUsernameInput", "pseudo ami", false,
                 new Vector2(0.5f, 1f), new Vector2(-118f, -140f), new Vector2(380f, 52f), palette);
             CreateButton(panel.transform, "AddFriendButton", "Ajouter", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(210f, -140f), new Vector2(170f, 52f), palette.UiButtonText, palette.UiButtonDisabled);
@@ -549,10 +551,10 @@ namespace QuixoUnity.EditorTools
 
             CreateText(panel.transform, "TeamLobbyTitle", "Quixo equipe 2v2", 27f, TextAlignmentOptions.Center, palette.UiText,
                 new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(460f, 44f));
-            CreateText(panel.transform, "TeamLobbyCodeLabel", "Code lobby : aucun", 18f, TextAlignmentOptions.Center, palette.UiMuted,
+            CreateText(panel.transform, "TeamLobbyCodeLabel", "Code salon : aucun", 18f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -62f), new Vector2(460f, 28f));
 
-            CreateInput(panel.transform, "TeamLobbyCodeInput", "code lobby", false,
+            CreateInput(panel.transform, "TeamLobbyCodeInput", "code salon", false,
                 new Vector2(0.5f, 1f), new Vector2(-92f, -116f), new Vector2(250f, 50f), palette);
             CreateButton(panel.transform, "CreateTeamLobbyButton", "Creer", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(160f, -116f), new Vector2(150f, 50f), palette.UiButtonText, palette.UiButtonDisabled);
@@ -574,7 +576,7 @@ namespace QuixoUnity.EditorTools
             CreateButton(panel.transform, "LeaveTeamLobbyButton", "Retour", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(110f, -466f), new Vector2(200f, 48f), palette.UiButtonText, palette.UiButtonDisabled);
 
-            var hint = CreateText(panel.transform, "TeamLobbyHintLabel", "Creez un lobby, partagez le code, puis les joueurs rejoignent Team 1 ou Team 2.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
+            var hint = CreateText(panel.transform, "TeamLobbyHintLabel", "Creez un salon, partagez le code, puis les joueurs rejoignent l'equipe 1 ou l'equipe 2.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
                 new Vector2(0.5f, 1f), new Vector2(0f, -538f), new Vector2(460f, 70f));
             hint.enableWordWrapping = true;
             return panel.gameObject;

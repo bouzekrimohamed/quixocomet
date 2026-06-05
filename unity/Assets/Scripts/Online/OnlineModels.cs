@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using QuixoUnity.Core;
+using QuixoUnity.Gameplay;
 using UnityEngine;
 
 namespace QuixoUnity.Online
@@ -51,6 +52,9 @@ namespace QuixoUnity.Online
         public string game_kind;
         public string status;
         public string match_id;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
         public string created_at;
         public string updated_at;
     }
@@ -62,6 +66,9 @@ namespace QuixoUnity.Online
         public string to_user_id;
         public string game_kind;
         public string status;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
     }
 
     [Serializable]
@@ -80,6 +87,9 @@ namespace QuixoUnity.Online
         public string game_kind;
         public string status;
         public string match_id;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
         public string created_at;
         public string updated_at;
     }
@@ -90,6 +100,9 @@ namespace QuixoUnity.Online
         public string user_id;
         public string game_kind;
         public string status;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
         public string updated_at;
     }
 
@@ -118,6 +131,9 @@ namespace QuixoUnity.Online
         public string status;
         public string winner_id;
         public string winner_team;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
         public string created_at;
         public string updated_at;
     }
@@ -130,6 +146,9 @@ namespace QuixoUnity.Online
         public string player2_id;
         public string current_turn_id;
         public string status;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
     }
 
     [Serializable]
@@ -172,6 +191,8 @@ namespace QuixoUnity.Online
         public int selectedRow = -1;
         public int selectedCol = -1;
         public string direction;
+        public string dotOwner;
+        public string dotOwnerUserId;
         public int fromRow = -1;
         public int fromCol = -1;
         public int toRow = -1;
@@ -190,6 +211,9 @@ namespace QuixoUnity.Online
         public string host_user_id;
         public string status;
         public string match_id;
+        public string time_control_key;
+        public int initial_seconds;
+        public int increment_seconds;
         public string created_at;
         public string updated_at;
     }
@@ -344,11 +368,11 @@ namespace QuixoUnity.Online
         public static string Team1Player2Username;
         public static string Team2Player1Username;
         public static string Team2Player2Username;
-        // Duree par tour negociee pour cette partie en ligne. 0 = sans limite.
-        // V1 : chaque client lit sa propre valeur TurnTimerSettings localement, on n'envoie
-        // rien sur le reseau. Cette propriete sert uniquement de cache lors d'un changement
-        // de scene Menu -> Gameplay.
+        // Cadence negociee pour cette partie en ligne. 0+0 = sans limite.
         public static int TurnTimeSeconds;
+        public static string TimeControlKey;
+        public static int InitialSeconds;
+        public static int IncrementSeconds;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void ClearOnApplicationStart()
@@ -373,6 +397,7 @@ namespace QuixoUnity.Online
             SelectedGameKind = ParseGameKind(match.game_kind);
             SelectedMatchMode = ParseMatchMode(match.match_mode);
             CurrentTurnIndex = match.current_turn_index;
+            ApplyTimeControl(match);
             OpponentUserId = match.player1_id == localUserId ? match.player2_id : match.player1_id;
             OpponentUsername = string.IsNullOrWhiteSpace(opponentUsername) ? ShortId(OpponentUserId) : opponentUsername;
         }
@@ -398,6 +423,7 @@ namespace QuixoUnity.Online
             Team1Player2Id = match.team1_player2_id;
             Team2Player1Id = match.team2_player1_id;
             Team2Player2Id = match.team2_player2_id;
+            ApplyTimeControl(match);
             ApplyLobbyNames(lobby);
             OpponentUserId = FirstOpponentOf(localUserId);
             OpponentUsername = TeamLabel(OpposingTeam(TeamForUser(localUserId)));
@@ -450,6 +476,7 @@ namespace QuixoUnity.Online
             Team1Player2Id = match.team1_player2_id;
             Team2Player1Id = match.team2_player1_id;
             Team2Player2Id = match.team2_player2_id;
+            ApplyTimeControl(match);
         }
 
         public static void Clear()
@@ -474,6 +501,23 @@ namespace QuixoUnity.Online
             Team2Player1Username = string.Empty;
             Team2Player2Username = string.Empty;
             TurnTimeSeconds = 0;
+            TimeControlKey = string.Empty;
+            InitialSeconds = 0;
+            IncrementSeconds = 0;
+        }
+
+        public static void ApplyTimeControl(OnlineMatchDto match)
+        {
+            if (match == null)
+            {
+                return;
+            }
+
+            var option = TurnTimerSettings.OptionForNetwork(match.time_control_key, match.initial_seconds, match.increment_seconds);
+            TimeControlKey = option.Key;
+            InitialSeconds = option.InitialSeconds;
+            IncrementSeconds = option.IncrementSeconds;
+            TurnTimeSeconds = option.InitialSeconds;
         }
 
         public static PlayerMark LocalPlayerMark()
@@ -560,6 +604,82 @@ namespace QuixoUnity.Online
                 2 => Team1Player2Id,
                 3 => Team2Player2Id,
                 _ => Team1Player1Id
+            };
+        }
+
+        public static QuixoDotOwner DotOwnerForUser(string userId)
+        {
+            if (userId == Team1Player1Id)
+            {
+                return QuixoDotOwner.Team1Player1;
+            }
+
+            if (userId == Team1Player2Id)
+            {
+                return QuixoDotOwner.Team1Player2;
+            }
+
+            if (userId == Team2Player1Id)
+            {
+                return QuixoDotOwner.Team2Player1;
+            }
+
+            return userId == Team2Player2Id ? QuixoDotOwner.Team2Player2 : QuixoDotOwner.None;
+        }
+
+        public static string UserIdForDotOwner(QuixoDotOwner owner)
+        {
+            return owner switch
+            {
+                QuixoDotOwner.Team1Player1 => Team1Player1Id,
+                QuixoDotOwner.Team1Player2 => Team1Player2Id,
+                QuixoDotOwner.Team2Player1 => Team2Player1Id,
+                QuixoDotOwner.Team2Player2 => Team2Player2Id,
+                _ => string.Empty
+            };
+        }
+
+        public static TeamId TeamForDotOwner(QuixoDotOwner owner)
+        {
+            return owner == QuixoDotOwner.Team1Player1 || owner == QuixoDotOwner.Team1Player2
+                ? TeamId.Team1
+                : owner == QuixoDotOwner.Team2Player1 || owner == QuixoDotOwner.Team2Player2
+                    ? TeamId.Team2
+                    : TeamId.None;
+        }
+
+        public static bool TryParseDotOwner(string value, out QuixoDotOwner owner)
+        {
+            if (Enum.TryParse(value, true, out owner))
+            {
+                return true;
+            }
+
+            owner = QuixoDotOwner.None;
+            return false;
+        }
+
+        public static string BoardSideForUser(string userId)
+        {
+            return DotOwnerForUser(userId) switch
+            {
+                QuixoDotOwner.Team1Player1 => "Bas",
+                QuixoDotOwner.Team2Player1 => "Droite",
+                QuixoDotOwner.Team1Player2 => "Haut",
+                QuixoDotOwner.Team2Player2 => "Gauche",
+                _ => "Inconnue"
+            };
+        }
+
+        public static string BoardSideForDotOwner(QuixoDotOwner owner)
+        {
+            return owner switch
+            {
+                QuixoDotOwner.Team1Player1 => "Bas",
+                QuixoDotOwner.Team2Player1 => "Droite",
+                QuixoDotOwner.Team1Player2 => "Haut",
+                QuixoDotOwner.Team2Player2 => "Gauche",
+                _ => "Inconnue"
             };
         }
 

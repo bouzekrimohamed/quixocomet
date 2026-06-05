@@ -32,6 +32,11 @@ namespace QuixoUnity.Core
 
         public static bool ApplyMove(BoardState state, int row, int col, MoveDirection direction)
         {
+            return ApplyMoveWithDot(state, row, col, direction, QuixoDotOwner.None);
+        }
+
+        public static bool ApplyMoveWithDot(BoardState state, int row, int col, MoveDirection direction, QuixoDotOwner dotOwner)
+        {
             if (!AllowedDirections(state, row, col).Contains(direction))
             {
                 return false;
@@ -43,9 +48,11 @@ namespace QuixoUnity.Core
                 for (int r = row; r > 0; r--)
                 {
                     state.Cells[r, col] = state.Cells[r - 1, col];
+                    state.DotOwners[r, col] = state.DotOwners[r - 1, col];
                 }
 
                 state.Cells[0, col] = player;
+                state.DotOwners[0, col] = dotOwner;
                 return true;
             }
 
@@ -54,9 +61,11 @@ namespace QuixoUnity.Core
                 for (int r = row; r < state.Size - 1; r++)
                 {
                     state.Cells[r, col] = state.Cells[r + 1, col];
+                    state.DotOwners[r, col] = state.DotOwners[r + 1, col];
                 }
 
                 state.Cells[state.Size - 1, col] = player;
+                state.DotOwners[state.Size - 1, col] = dotOwner;
                 return true;
             }
 
@@ -65,18 +74,22 @@ namespace QuixoUnity.Core
                 for (int c = col; c > 0; c--)
                 {
                     state.Cells[row, c] = state.Cells[row, c - 1];
+                    state.DotOwners[row, c] = state.DotOwners[row, c - 1];
                 }
 
                 state.Cells[row, 0] = player;
+                state.DotOwners[row, 0] = dotOwner;
                 return true;
             }
 
             for (int c = col; c < state.Size - 1; c++)
             {
                 state.Cells[row, c] = state.Cells[row, c + 1];
+                state.DotOwners[row, c] = state.DotOwners[row, c + 1];
             }
 
             state.Cells[row, state.Size - 1] = player;
+            state.DotOwners[row, state.Size - 1] = dotOwner;
             return true;
         }
 

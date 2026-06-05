@@ -21,7 +21,7 @@ namespace QuixoUnity.Social
 
             if (string.IsNullOrWhiteSpace(username))
             {
-                onComplete?.Invoke(SocialOperationResult.Fail("Entrez un username."));
+                onComplete?.Invoke(SocialOperationResult.Fail("Entrez un pseudo."));
                 return;
             }
 

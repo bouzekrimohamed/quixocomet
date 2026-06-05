@@ -31,3 +31,14 @@ unity/BuildMac.zip
 
 .claude/worktrees/
 .claude/
+
+# Unity builds
+unity/BuildMacOs.app/
+unity/BuildMacOs.app.zip
+unity/BuildMacOs.zip
+unity/BuildMacOS/
+unity/BuildMacOS.zip
+unity/BuildWindows/
+unity/BuildWindows.zip
+unity/BuildLinux/
+unity/BuildLinux.zip
