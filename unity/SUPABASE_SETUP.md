@@ -725,6 +725,7 @@ using (
   user_id = auth.uid()
   or public.lobby_host_of(lobby_id) = auth.uid()
   or public.is_lobby_participant(lobby_id, auth.uid())
+  or public.lobby_status_of(lobby_id) = 'lobby'
 );
 
 create policy "online_lobby_players_insert_self"
@@ -1285,11 +1286,13 @@ on public.online_lobby_players
 for select
 to authenticated
 using (
-  -- Je vois ma propre ligne, ou toutes les lignes d'un salon dont je suis
-  -- deja participant, ou toutes les lignes d'un salon que j'ai cree.
+  -- Je vois ma propre ligne, les lignes d'un salon ouvert (pour choisir le bon
+  -- slot avant de rejoindre), ou toutes les lignes si je suis deja participant
+  -- ou hote.
   user_id = auth.uid()
   or public.lobby_host_of(lobby_id) = auth.uid()
   or public.is_lobby_participant(lobby_id, auth.uid())
+  or public.lobby_status_of(lobby_id) = 'lobby'
 );
 
 create policy "online_lobby_players_insert_self"
@@ -1338,6 +1341,8 @@ Apres execution :
 - Cote B, saisir le code et rejoindre : doit fonctionner.
 - Cote A, voir les 4 slots (host + 3 places) sans erreur.
 - Cote B, voir la composition d'equipes sans erreur.
+- Cote C puis D rejoignent une equipe deja partiellement remplie : chacun doit
+  prendre le **deuxieme slot** de son equipe (Team1Player2 ou Team2Player2).
 
 ### Ce qui ne change pas
 
@@ -1345,3 +1350,90 @@ Les policies de `match_invites`, `matchmaking_queue`, `online_matches`,
 `online_moves`, `friends`, `profiles`, `user_presence` sont **inchangees**.
 Aucune cle `service_role` n'est ajoutee cote Unity. Aucune table n'est rendue
 publique.
+
+## 15. Correction slots lobby 2v2
+
+**Symptome :** seuls les 2 premiers joueurs (1 par equipe) peuvent rejoindre.
+Le 3e ou 4e joueur recoit :
+`Impossible de rejoindre cette place. Rafraichissez le salon.`
+
+### Cause
+
+Deux causes possibles, souvent combinees :
+
+1. **Policy RLS trop stricte (cause principale)** : un joueur qui n'est pas
+   encore dans le salon ne peut pas lire `online_lobby_players`. Unity recoit
+   une liste vide, croit que le slot 0 est libre, et tente d'inserer dans
+   `Team1Player1` ou `Team2Player1` deja occupe -> violation de
+   `unique(lobby_id, team_id, slot_index)`.
+
+2. **Mauvaise contrainte unique (cause secondaire)** : si la base contient
+   `unique(lobby_id, team_id)` au lieu de `unique(lobby_id, team_id, slot_index)`,
+   une seule ligne par equipe est autorisee.
+
+La contrainte correcte dans ce projet est :
+
+```sql
+unique(lobby_id, user_id),
+unique(lobby_id, team_id, slot_index)
+```
+
+avec `slot_index in (0, 1)` pour Team1Player1/Team1Player2 et
+Team2Player1/Team2Player2.
+
+### SQL idempotent a executer
+
+Executer ce bloc dans le SQL Editor Supabase :
+
+```sql
+-- 1. Policy SELECT : tout utilisateur authentifie peut lire la composition
+--    d'un salon encore ouvert (status = lobby), pour choisir le bon slot.
+drop policy if exists "online_lobby_players_select_lobby" on public.online_lobby_players;
+
+create policy "online_lobby_players_select_lobby"
+on public.online_lobby_players
+for select
+to authenticated
+using (
+  user_id = auth.uid()
+  or public.lobby_host_of(lobby_id) = auth.uid()
+  or public.is_lobby_participant(lobby_id, auth.uid())
+  or public.lobby_status_of(lobby_id) = 'lobby'
+);
+
+-- 2. Supprimer une contrainte unique trop stricte si elle existe
+--    (1 seul joueur par equipe). Adapter le nom si votre base differe.
+alter table public.online_lobby_players
+  drop constraint if exists online_lobby_players_lobby_id_team_id_key;
+
+alter table public.online_lobby_players
+  drop constraint if exists online_lobby_players_lobby_id_team_key;
+
+-- 3. Garantir la contrainte correcte : 2 slots par equipe, 1 joueur par slot.
+alter table public.online_lobby_players
+  drop constraint if exists online_lobby_players_lobby_id_team_id_slot_index_key;
+
+alter table public.online_lobby_players
+  add constraint online_lobby_players_lobby_id_team_id_slot_index_key
+  unique (lobby_id, team_id, slot_index);
+
+alter table public.online_lobby_players
+  drop constraint if exists online_lobby_players_lobby_id_user_id_key;
+
+alter table public.online_lobby_players
+  add constraint online_lobby_players_lobby_id_user_id_key
+  unique (lobby_id, user_id);
+```
+
+Les fonctions `lobby_status_of`, `lobby_host_of` et `is_lobby_participant`
+doivent exister (section 10 ou 14). Si ce n'est pas le cas, executer d'abord
+la section 14.
+
+### Verification
+
+1. A cree le salon et rejoint equipe 1 -> Team1Player1.
+2. B rejoint equipe 2 -> Team2Player1.
+3. C rejoint equipe 1 -> Team1Player2 (doit fonctionner).
+4. D rejoint equipe 2 -> Team2Player2 (doit fonctionner).
+5. Un 5e joueur recoit `Salon complet.` ou `Equipe X complete.`
+6. L'hote demarre seulement avec 4 joueurs.

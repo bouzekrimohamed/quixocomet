@@ -42,3 +42,12 @@ unity/BuildWindows/
 unity/BuildWindows.zip
 unity/BuildLinux/
 unity/BuildLinux.zip
+
+# Unity builds
+unity/BuildMacOs.app/
+unity/BuildMacOs.zip
+unity/BuildMacOS.zip
+unity/BuildWindows/
+unity/BuildWindows.zip
+unity/BuildLinux/
+unity/BuildLinux.zip

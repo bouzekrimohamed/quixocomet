@@ -163,11 +163,14 @@ namespace QuixoUnity.Gameplay
 
             var origin = _selected.Value;
             QuixoDotOwner dotOwner = DotOwnerForNextQuixoMove();
+            TeamId localTeam = OnlineSessionTransit.TeamForUser(SessionManager.UserId);
+            PlayerMark localMark = OnlineSessionTransit.PlayerMarkForTeam(localTeam);
             var payload = new OnlineMovePayload
             {
                 gameKind = OnlineSessionTransit.GameKindName(gameKind),
                 matchMode = OnlineSessionTransit.MatchModeName(OnlineSessionTransit.SelectedMatchMode),
-                team = OnlineSessionTransit.TeamName(OnlineSessionTransit.TeamForUser(SessionManager.UserId)),
+                team = OnlineSessionTransit.TeamName(localTeam),
+                mark = OnlineSessionTransit.MarkSymbol(localMark),
                 playerId = SessionManager.UserId,
                 action = "direction",
                 selectedRow = origin.x,
@@ -646,11 +649,24 @@ namespace QuixoUnity.Gameplay
             }
 
             // Aligne immediatement l'etat local sur le tour serveur.
-            _state.SetCurrentPlayer(OnlineSessionTransit.PlayerMarkForUser(currentTurnId));
+            PlayerMark serverTurnMark = OnlineSessionTransit.PlayerMarkForUser(currentTurnId);
+            if (serverTurnMark != PlayerMark.None)
+            {
+                _state.SetCurrentPlayer(serverTurnMark);
+            }
 
             bool isMyTurn = currentTurnId == localUserId;
-            string localMark = OnlineSessionTransit.LocalPlayerMark() == PlayerMark.Player1 ? "Player1" : "Player2";
+            string localMark = OnlineSessionTransit.MarkSymbol(OnlineSessionTransit.LocalPlayerMark());
             Debug.Log($"[Online] Loaded match {_onlineMatch.id} mode={_onlineMatch.match_mode} p1={_onlineMatch.player1_id} p2={_onlineMatch.player2_id} turn={_onlineMatch.current_turn_id} local={localUserId} localMark={localMark} isMyTurn={isMyTurn}");
+
+            // Diagnostic 2v2 : trace systematiquement l'equipe et le slot, sans token.
+            if (OnlineSessionTransit.IsTeam2v2)
+            {
+                TeamId localTeam = OnlineSessionTransit.TeamForUser(localUserId);
+                string slot = OnlineSessionTransit.SlotNameForUser(localUserId);
+                string markSymbol = OnlineSessionTransit.MarkSymbol(OnlineSessionTransit.PlayerMarkForTeam(localTeam));
+                Debug.Log($"[2v2] localUser={localUserId} slot={slot} team={OnlineSessionTransit.TeamName(localTeam)} mark={markSymbol}");
+            }
 
             onlinePresenceService?.StartPresence();
             hudView.SetRestartEnabled(false);
@@ -760,7 +776,6 @@ namespace QuixoUnity.Gameplay
             }
 
             _applyingOnlineMove = true;
-            _state.SetCurrentPlayer(OnlineSessionTransit.PlayerMarkForUser(move.player_id));
             bool applied = false;
             var payload = move.move_payload;
             if (string.IsNullOrWhiteSpace(payload.playerId))
@@ -768,15 +783,36 @@ namespace QuixoUnity.Gameplay
                 payload.playerId = move.player_id;
             }
 
+            string moverId = string.IsNullOrWhiteSpace(move.player_id) ? payload.playerId : move.player_id;
+            PlayerMark moverMark = OnlineSessionTransit.PlayerMarkForUser(moverId);
+            if (OnlineSessionTransit.IsTeam2v2)
+            {
+                TeamId moverTeam = OnlineSessionTransit.TeamForUser(moverId);
+                moverMark = OnlineSessionTransit.PlayerMarkForTeam(moverTeam);
+                if (moverMark == PlayerMark.None)
+                {
+                    Debug.LogWarning($"[2v2] move user={moverId} team={OnlineSessionTransit.TeamName(moverTeam)} mark=? ignored: user not found in team slots.");
+                    _applyingOnlineMove = false;
+                    return false;
+                }
+
+                payload.team = OnlineSessionTransit.TeamName(moverTeam);
+                payload.mark = OnlineSessionTransit.MarkSymbol(moverMark);
+                payload.playerId = moverId;
+                Debug.Log($"[2v2] move user={moverId} team={payload.team} mark={payload.mark}");
+            }
+
+            _state.SetCurrentPlayer(moverMark);
+
             if (gameKind == GameKind.Quixo)
             {
                 if (Enum.TryParse(payload.direction, out MoveDirection direction))
                 {
                     QuixoDotOwner dotOwner = DotOwnerFromPayload(payload);
-                    applied = TryApplyQuixoDirectionalMove(payload.selectedRow, payload.selectedCol, direction, dotOwner, move.player_id);
+                    applied = TryApplyQuixoDirectionalMove(payload.selectedRow, payload.selectedCol, direction, dotOwner, moverId);
                     if (applied)
                     {
-                        EndTurn(new Vector2Int(payload.selectedRow, payload.selectedCol), "Coup adverse recu.", move.player_id);
+                        EndTurn(new Vector2Int(payload.selectedRow, payload.selectedCol), "Coup adverse recu.", moverId);
                     }
                 }
             }
@@ -823,6 +859,24 @@ namespace QuixoUnity.Gameplay
             }
 
             _onlineSubmitting = true;
+            if (OnlineSessionTransit.IsTeam2v2)
+            {
+                TeamId localTeam = OnlineSessionTransit.TeamForUser(SessionManager.UserId);
+                PlayerMark localMark = OnlineSessionTransit.PlayerMarkForTeam(localTeam);
+                if (localMark == PlayerMark.None)
+                {
+                    _onlineSubmitting = false;
+                    hudView.SetInfo("Joueur 2v2 introuvable dans ce match.");
+                    Debug.LogWarning($"[2v2] move user={SessionManager.UserId} team={OnlineSessionTransit.TeamName(localTeam)} mark=? blocked: user not found in team slots.");
+                    return;
+                }
+
+                payload.playerId = SessionManager.UserId;
+                payload.team = OnlineSessionTransit.TeamName(localTeam);
+                payload.mark = OnlineSessionTransit.MarkSymbol(localMark);
+                Debug.Log($"[2v2] move user={payload.playerId} team={payload.team} mark={payload.mark}");
+            }
+
             string winnerId = WinnerUserId(_state.Winner);
             string winnerTeam = WinnerTeamName(_state.Winner);
             int nextTurnIndex = _onlineMatch.current_turn_index;
@@ -1393,6 +1447,35 @@ namespace QuixoUnity.Gameplay
             if (!TrySelectQuixoCell(row, col, userId, out _))
             {
                 return false;
+            }
+
+            // Source de verite unique en online : le mark appose sur la cellule est celui de
+            // l'EQUIPE du userId qui joue (et non d'un state.CurrentPlayer potentiellement
+            // desynchronise entre 2 polls). Resout le bug "je suis Team2 (O) mais je pose X".
+            if (IsOnlineGame)
+            {
+                PlayerMark expectedMark = OnlineSessionTransit.PlayerMarkForUser(userId);
+                if (expectedMark == PlayerMark.None)
+                {
+                    if (OnlineSessionTransit.IsTeam2v2)
+                    {
+                        TeamId expectedTeam = OnlineSessionTransit.TeamForUser(userId);
+                        Debug.LogWarning($"[2v2] move user={userId} team={OnlineSessionTransit.TeamName(expectedTeam)} mark=? blocked before apply.");
+                    }
+
+                    return false;
+                }
+
+                if (_state.CurrentPlayer != expectedMark)
+                {
+                    if (OnlineSessionTransit.IsTeam2v2)
+                    {
+                        TeamId expectedTeam = OnlineSessionTransit.TeamForUser(userId);
+                        Debug.Log($"[2v2] Realign mark before apply: user={userId} team={OnlineSessionTransit.TeamName(expectedTeam)} expectedMark={OnlineSessionTransit.MarkSymbol(expectedMark)} previousState={_state.CurrentPlayer}");
+                    }
+
+                    _state.SetCurrentPlayer(expectedMark);
+                }
             }
 
             return QuixoRules.ApplyMoveWithDot(_state, row, col, direction, OnlineSessionTransit.IsTeam2v2 ? dotOwner : QuixoDotOwner.None);

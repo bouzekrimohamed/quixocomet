@@ -186,6 +186,7 @@ namespace QuixoUnity.Online
         public string gameKind;
         public string matchMode;
         public string team;
+        public string mark;
         public string playerId;
         public string action;
         public int selectedRow = -1;
@@ -270,6 +271,38 @@ namespace QuixoUnity.Online
             }
 
             return count;
+        }
+
+        public bool IsTeamFull(TeamId team)
+        {
+            return CountTeam(team) >= 2;
+        }
+
+        public bool TryResolveFreeSlot(TeamId team, out int slotIndex)
+        {
+            if (IsTeamFull(team))
+            {
+                slotIndex = -1;
+                return false;
+            }
+
+            slotIndex = GetPlayer(team, 0) == null ? 0 : 1;
+            return true;
+        }
+
+        public static string SlotName(TeamId team, int slotIndex)
+        {
+            if (team == TeamId.Team1)
+            {
+                return slotIndex == 0 ? "Team1Player1" : "Team1Player2";
+            }
+
+            if (team == TeamId.Team2)
+            {
+                return slotIndex == 0 ? "Team2Player1" : "Team2Player2";
+            }
+
+            return "UnknownSlot";
         }
 
         public bool HasUser(string userId)
@@ -524,7 +557,7 @@ namespace QuixoUnity.Online
         {
             if (SelectedMatchMode == MatchMode.Team2v2)
             {
-                return TeamForUser(LocalUserId) == TeamId.Team1 ? PlayerMark.Player1 : PlayerMark.Player2;
+                return PlayerMarkForTeam(TeamForUser(LocalUserId));
             }
 
             return LocalUserId == Player1Id ? PlayerMark.Player1 : PlayerMark.Player2;
@@ -534,10 +567,24 @@ namespace QuixoUnity.Online
         {
             if (SelectedMatchMode == MatchMode.Team2v2)
             {
-                return TeamForUser(userId) == TeamId.Team1 ? PlayerMark.Player1 : PlayerMark.Player2;
+                return PlayerMarkForTeam(TeamForUser(userId));
             }
 
             return userId == Player1Id ? PlayerMark.Player1 : PlayerMark.Player2;
+        }
+
+        public static PlayerMark PlayerMarkForTeam(TeamId team)
+        {
+            return team == TeamId.Team1
+                ? PlayerMark.Player1
+                : team == TeamId.Team2
+                    ? PlayerMark.Player2
+                    : PlayerMark.None;
+        }
+
+        public static string MarkSymbol(PlayerMark mark)
+        {
+            return mark == PlayerMark.Player1 ? "X" : mark == PlayerMark.Player2 ? "O" : "?";
         }
 
         public static string OpponentOf(string userId)
@@ -701,6 +748,26 @@ namespace QuixoUnity.Online
             }
 
             return userId == Team2Player2Id ? 3 : 0;
+        }
+
+        public static string SlotNameForUser(string userId)
+        {
+            if (userId == Team1Player1Id)
+            {
+                return "Team1Player1";
+            }
+
+            if (userId == Team1Player2Id)
+            {
+                return "Team1Player2";
+            }
+
+            if (userId == Team2Player1Id)
+            {
+                return "Team2Player1";
+            }
+
+            return userId == Team2Player2Id ? "Team2Player2" : "(none)";
         }
 
         public static string UsernameForUser(string userId)

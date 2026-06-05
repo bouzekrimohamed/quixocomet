@@ -27,6 +27,18 @@ namespace QuixoUnity.EditorTools
         private const string GameplayScenePath = "Assets/Scenes/GameplayScene.unity";
         private const string IntroVideoClipPath = "Assets/Videos/powered_by_mohamed_bouzekri.mp4";
         private const string IntroVideoClipFallbackPath = "Assets/Videos/powered_by_mohamed_bouzekri.mp4.mp4";
+        private const string TeamLobbyHelpText =
+            "COMMENT JOUER EN 2V2\n\n" +
+            "1. Un joueur crée un salon.\n" +
+            "2. Le code du salon s'affiche.\n" +
+            "3. Les 3 autres joueurs entrent ce code.\n" +
+            "4. Chaque joueur choisit son équipe :\n" +
+            "   - Équipe 1 joue X.\n" +
+            "   - Équipe 2 joue O.\n" +
+            "5. Il faut 4 joueurs pour démarrer.\n" +
+            "6. Ordre des tours :\n" +
+            "   Équipe 1 J1 -> Équipe 2 J1 -> Équipe 1 J2 -> Équipe 2 J2.\n" +
+            "7. Le point sur un cube indique quel coéquipier peut reprendre ce cube.";
         // ===============================
         // CHANGE THEME HERE
         // Options:
@@ -347,6 +359,7 @@ namespace QuixoUnity.EditorTools
             modePanel.gameObject.SetActive(false);
             gamePanel.gameObject.SetActive(false);
             teamLobbyPanel.SetActive(false);
+            FindComponentInChildren<RectTransform>(panel.transform, "TeamLobbyHelpPanel")?.gameObject.SetActive(false);
             var cancelOnlineButton = CreateButton(panel.transform, "CancelOnlineButton", "Annuler recherche", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(0f, -490f), new Vector2(420f, 50f), palette.UiButtonText, palette.UiButtonDisabled);
             cancelOnlineButton.gameObject.SetActive(false);
@@ -399,6 +412,8 @@ namespace QuixoUnity.EditorTools
             AssignObject(menuController, "teamLobbyTeam1Label", FindComponentInChildren<TextMeshProUGUI>(teamLobbyPanel.transform, "TeamLobbyTeam1Label"));
             AssignObject(menuController, "teamLobbyTeam2Label", FindComponentInChildren<TextMeshProUGUI>(teamLobbyPanel.transform, "TeamLobbyTeam2Label"));
             AssignObject(menuController, "teamLobbyHintLabel", FindComponentInChildren<TextMeshProUGUI>(teamLobbyPanel.transform, "TeamLobbyHintLabel"));
+            AssignObject(menuController, "teamLobbyHelpPanel", FindComponentInChildren<RectTransform>(panel.transform, "TeamLobbyHelpPanel")?.gameObject);
+            AssignObject(menuController, "teamLobbyHelpLabel", FindComponentInChildren<TextMeshProUGUI>(panel.transform, "TeamLobbyHelpLabel"));
             AssignObject(menuController, "createTeamLobbyButton", FindComponentInChildren<Button>(teamLobbyPanel.transform, "CreateTeamLobbyButton"));
             AssignObject(menuController, "joinTeam1Button", FindComponentInChildren<Button>(teamLobbyPanel.transform, "JoinTeam1Button"));
             AssignObject(menuController, "joinTeam2Button", FindComponentInChildren<Button>(teamLobbyPanel.transform, "JoinTeam2Button"));
@@ -546,40 +561,72 @@ namespace QuixoUnity.EditorTools
 
         private static GameObject BuildTeamLobbyPanel(Transform parent, GameplayPalette palette)
         {
-            var panel = CreateAuthModePanel(parent, "TeamLobbyPanel", new Vector2(520f, 620f),
-                new Vector2(0.5f, 1f), new Vector2(0f, -220f));
+            var panel = CreateAuthModePanel(parent, "TeamLobbyPanel", new Vector2(500f, 620f),
+                new Vector2(0.5f, 1f), new Vector2(-285f, -220f));
+            AddPanelSurface(panel.gameObject, palette);
 
-            CreateText(panel.transform, "TeamLobbyTitle", "Quixo equipe 2v2", 27f, TextAlignmentOptions.Center, palette.UiText,
-                new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(460f, 44f));
-            CreateText(panel.transform, "TeamLobbyCodeLabel", "Code salon : aucun", 18f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -62f), new Vector2(460f, 28f));
+            CreateText(panel.transform, "TeamLobbyTitle", "Quixo équipe 2v2", 27f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -16f), new Vector2(440f, 44f));
+            var codeLabel = CreateText(panel.transform, "TeamLobbyCodeLabel", "Code du salon : aucun", 18f, TextAlignmentOptions.Center, palette.UiText,
+                new Vector2(0.5f, 1f), new Vector2(0f, -60f), new Vector2(440f, 54f));
+            codeLabel.enableWordWrapping = true;
+            codeLabel.enableAutoSizing = true;
+            codeLabel.fontSizeMin = 13f;
+            codeLabel.fontSizeMax = 22f;
 
-            CreateInput(panel.transform, "TeamLobbyCodeInput", "code salon", false,
+            CreateInput(panel.transform, "TeamLobbyCodeInput", "Entrer le code du salon", false,
                 new Vector2(0.5f, 1f), new Vector2(-92f, -116f), new Vector2(250f, 50f), palette);
-            CreateButton(panel.transform, "CreateTeamLobbyButton", "Creer", palette.UiButton,
+            CreateButton(panel.transform, "CreateTeamLobbyButton", "Créer un salon", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(160f, -116f), new Vector2(150f, 50f), palette.UiButtonText, palette.UiButtonDisabled);
 
-            CreateText(panel.transform, "TeamLobbyTeam1Label", "Equipe 1 (X) : libre + libre", 18f, TextAlignmentOptions.Left, palette.UiText,
-                new Vector2(0f, 1f), new Vector2(44f, -180f), new Vector2(440f, 30f));
-            CreateText(panel.transform, "TeamLobbyTeam2Label", "Equipe 2 (O) : libre + libre", 18f, TextAlignmentOptions.Left, palette.UiText,
-                new Vector2(0f, 1f), new Vector2(44f, -222f), new Vector2(440f, 30f));
+            var team1 = CreateText(panel.transform, "TeamLobbyTeam1Label", "Équipe 1 (X) : libre + libre", 18f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(34f, -180f), new Vector2(430f, 34f));
+            team1.enableAutoSizing = true;
+            team1.fontSizeMin = 14f;
+            team1.fontSizeMax = 19f;
+            var team2 = CreateText(panel.transform, "TeamLobbyTeam2Label", "Équipe 2 (O) : libre + libre", 18f, TextAlignmentOptions.Left, palette.UiText,
+                new Vector2(0f, 1f), new Vector2(34f, -224f), new Vector2(430f, 34f));
+            team2.enableAutoSizing = true;
+            team2.fontSizeMin = 14f;
+            team2.fontSizeMax = 19f;
 
-            CreateButton(panel.transform, "JoinTeam1Button", "Rejoindre equipe 1", palette.UiButton,
+            CreateButton(panel.transform, "JoinTeam1Button", "Rejoindre équipe 1 (X)", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -286f), new Vector2(420f, 50f), palette.UiButtonText, palette.UiButtonDisabled);
-            CreateButton(panel.transform, "JoinTeam2Button", "Rejoindre equipe 2", palette.UiButtonSecondary,
+            CreateButton(panel.transform, "JoinTeam2Button", "Rejoindre équipe 2 (O)", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(0f, -346f), new Vector2(420f, 50f), palette.UiButtonText, palette.UiButtonDisabled);
-            CreateButton(panel.transform, "StartTeamLobbyButton", "Demarrer partie", palette.UiButton,
+            CreateButton(panel.transform, "StartTeamLobbyButton", "En attente de 4 joueurs", palette.UiButton,
                 new Vector2(0.5f, 1f), new Vector2(0f, -406f), new Vector2(420f, 50f), palette.UiButtonText, palette.UiButtonDisabled);
 
-            CreateButton(panel.transform, "RefreshTeamLobbyButton", "Rafraichir", palette.UiButtonSecondary,
+            CreateButton(panel.transform, "RefreshTeamLobbyButton", "Rafraîchir", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(-110f, -466f), new Vector2(200f, 48f), palette.UiButtonText, palette.UiButtonDisabled);
             CreateButton(panel.transform, "LeaveTeamLobbyButton", "Retour", palette.UiButtonSecondary,
                 new Vector2(0.5f, 1f), new Vector2(110f, -466f), new Vector2(200f, 48f), palette.UiButtonText, palette.UiButtonDisabled);
 
-            var hint = CreateText(panel.transform, "TeamLobbyHintLabel", "Creez un salon, partagez le code, puis les joueurs rejoignent l'equipe 1 ou l'equipe 2.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
-                new Vector2(0.5f, 1f), new Vector2(0f, -538f), new Vector2(460f, 70f));
+            var hint = CreateText(panel.transform, "TeamLobbyHintLabel", "Créez un salon ou entrez un code reçu.", 15f, TextAlignmentOptions.Center, palette.UiMuted,
+                new Vector2(0.5f, 1f), new Vector2(0f, -532f), new Vector2(440f, 74f));
             hint.enableWordWrapping = true;
+            hint.enableAutoSizing = true;
+            hint.fontSizeMin = 12f;
+            hint.fontSizeMax = 15f;
+
+            BuildTeamLobbyHelpPanel(parent, palette);
             return panel.gameObject;
+        }
+
+        private static GameObject BuildTeamLobbyHelpPanel(Transform parent, GameplayPalette palette)
+        {
+            var helpPanel = CreatePanel(parent, "TeamLobbyHelpPanel", new Vector2(500f, 620f), palette.MenuPanel);
+            SetAnchored(helpPanel.GetComponent<RectTransform>(), new Vector2(0.5f, 1f), new Vector2(285f, -220f), new Vector2(500f, 620f));
+
+            var help = CreateText(helpPanel.transform, "TeamLobbyHelpLabel", TeamLobbyHelpText, 17f, TextAlignmentOptions.TopLeft, palette.UiText,
+                new Vector2(0.5f, 0.5f), Vector2.zero, new Vector2(432f, 564f));
+            Stretch(help.rectTransform, new Vector2(34f, 28f), new Vector2(-34f, -28f));
+            help.enableWordWrapping = true;
+            help.enableAutoSizing = true;
+            help.fontSizeMin = 12f;
+            help.fontSizeMax = 17f;
+            help.overflowMode = TextOverflowModes.Ellipsis;
+            return helpPanel;
         }
 
         private static void CreateGameplayStage(Transform parent, GameplayPalette palette)
@@ -994,6 +1041,37 @@ namespace QuixoUnity.EditorTools
             var rect = panel.GetComponent<RectTransform>();
             rect.sizeDelta = size;
             return panel;
+        }
+
+        private static void AddPanelSurface(GameObject panel, GameplayPalette palette)
+        {
+            if (panel == null)
+            {
+                return;
+            }
+
+            var image = panel.GetComponent<Image>();
+            if (image == null)
+            {
+                image = panel.AddComponent<Image>();
+            }
+
+            image.color = palette.MenuPanel;
+            image.raycastTarget = false;
+
+            if (panel.GetComponent<Shadow>() == null)
+            {
+                var shadow = panel.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0f, 0f, 0f, 0.24f);
+                shadow.effectDistance = new Vector2(0f, -4f);
+            }
+
+            if (panel.GetComponent<Outline>() == null)
+            {
+                var outline = panel.AddComponent<Outline>();
+                outline.effectColor = WithAlpha(palette.UiText, 0.18f);
+                outline.effectDistance = new Vector2(1f, 1f);
+            }
         }
 
         private static TMP_InputField CreateInput(

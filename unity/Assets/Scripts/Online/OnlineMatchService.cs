@@ -253,6 +253,23 @@ namespace QuixoUnity.Online
             StartCoroutine(FetchTeamLobbyByIdRoutine(lobbyId, onComplete));
         }
 
+        public void FetchTeamLobbyByCode(string lobbyCode, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
+            {
+                return;
+            }
+
+            string code = NormalizeLobbyCode(lobbyCode);
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Entrez un code salon."));
+                return;
+            }
+
+            StartCoroutine(FetchTeamLobbyByCodeRoutine(code, onComplete));
+        }
+
         public void LeaveTeamLobby(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
         {
             if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
@@ -514,18 +531,53 @@ namespace QuixoUnity.Online
                 yield break;
             }
 
-            if (snapshot.CountTeam(team) >= 2)
+            if (snapshot.Players != null && snapshot.Players.Count >= 4)
             {
-                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Cette equipe est deja complete."));
+                Debug.LogWarning("[2v2 Lobby] team full reason=salon complet (4 joueurs)");
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Salon complet."));
                 yield break;
             }
 
-            int slotIndex = snapshot.GetPlayer(team, 0) == null ? 0 : 1;
+            Debug.Log($"[2v2 Lobby] join request user={SessionManager.UserId} team={OnlineSessionTransit.TeamName(team)}");
+            Debug.Log($"[2v2 Lobby] team1 count={snapshot.CountTeam(TeamId.Team1)} team2 count={snapshot.CountTeam(TeamId.Team2)}");
+
+            if (snapshot.IsTeamFull(team))
+            {
+                Debug.LogWarning($"[2v2 Lobby] team full reason={OnlineSessionTransit.TeamName(team)} a deja 2 joueurs");
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail(team == TeamId.Team1 ? "Equipe 1 complete." : "Equipe 2 complete."));
+                yield break;
+            }
+
+            if (!snapshot.TryResolveFreeSlot(team, out int slotIndex))
+            {
+                Debug.LogWarning($"[2v2 Lobby] team full reason=aucun slot libre pour {OnlineSessionTransit.TeamName(team)}");
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail(team == TeamId.Team1 ? "Equipe 1 complete." : "Equipe 2 complete."));
+                yield break;
+            }
+
+            Debug.Log($"[2v2 Lobby] assigned slot={TeamLobbySnapshot.SlotName(team, slotIndex)}");
             bool inserted = false;
             yield return InsertLobbyPlayerRoutine(snapshot.Lobby.id, team, slotIndex, ok => inserted = ok);
             if (!inserted)
             {
-                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Impossible de rejoindre cette place. Rafraichissez le salon."));
+                TeamLobbyOperationResult refreshedAfterInsertFail = null;
+                yield return FetchTeamLobbyByIdRoutine(snapshot.Lobby.id, result => refreshedAfterInsertFail = result);
+                var retrySnapshot = refreshedAfterInsertFail?.Snapshot;
+                if (retrySnapshot != null
+                    && !retrySnapshot.HasUser(SessionManager.UserId)
+                    && retrySnapshot.TryResolveFreeSlot(team, out int retrySlot)
+                    && retrySlot != slotIndex)
+                {
+                    Debug.Log($"[2v2 Lobby] retry slot={TeamLobbySnapshot.SlotName(team, retrySlot)} after refresh");
+                    yield return InsertLobbyPlayerRoutine(snapshot.Lobby.id, team, retrySlot, ok => inserted = ok);
+                    slotIndex = retrySlot;
+                }
+            }
+
+            if (!inserted)
+            {
+                Debug.LogWarning($"[2v2 Lobby] team full reason=insert rejected team={OnlineSessionTransit.TeamName(team)} slot={TeamLobbySnapshot.SlotName(team, slotIndex)}");
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail(TeamJoinFailureMessage(team, snapshot)));
                 yield break;
             }
 
@@ -754,7 +806,13 @@ namespace QuixoUnity.Online
                 completed => request = completed);
             using (request)
             {
-                onComplete?.Invoke(IsSuccess(request));
+                bool ok = IsSuccess(request);
+                if (!ok)
+                {
+                    Debug.LogWarning($"[2v2 Lobby] insert failed team={OnlineSessionTransit.TeamName(team)} slot={TeamLobbySnapshot.SlotName(team, slotIndex)} reason={ParseLobbyJoinError(request)}");
+                }
+
+                onComplete?.Invoke(ok);
             }
         }
 
@@ -1855,6 +1913,38 @@ namespace QuixoUnity.Online
         private static string TeamDisplayName(TeamId team)
         {
             return team == TeamId.Team1 ? "equipe 1" : team == TeamId.Team2 ? "equipe 2" : "equipe inconnue";
+        }
+
+        private static string TeamJoinFailureMessage(TeamId team, TeamLobbySnapshot snapshot)
+        {
+            if (snapshot != null && snapshot.Players != null && snapshot.Players.Count >= 4)
+            {
+                return "Salon complet.";
+            }
+
+            if (snapshot != null && snapshot.IsTeamFull(team))
+            {
+                return team == TeamId.Team1 ? "Equipe 1 complete." : "Equipe 2 complete.";
+            }
+
+            return "Impossible de rejoindre cette place. Rafraichissez le salon ou verifiez le SQL Supabase (section 15).";
+        }
+
+        private static string ParseLobbyJoinError(UnityWebRequest request)
+        {
+            string body = request?.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+            string lower = body.ToLowerInvariant();
+            if (lower.Contains("duplicate key") || lower.Contains("23505"))
+            {
+                return "slot deja occupe (contrainte unique)";
+            }
+
+            if (lower.Contains("violates row-level security") || lower.Contains("42501"))
+            {
+                return "policy RLS bloque l'insertion";
+            }
+
+            return ParseError(request, "insertion impossible");
         }
 
         private static string ShortId(string value)

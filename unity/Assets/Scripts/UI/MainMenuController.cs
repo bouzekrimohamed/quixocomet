@@ -15,6 +15,18 @@ namespace QuixoUnity.UI
     {
         private const string GameplaySceneName = "GameplayScene";
         private const string AuthSceneName = "AuthScene";
+        private const string TeamLobbyHelpText =
+            "COMMENT JOUER EN 2V2\n\n" +
+            "1. Un joueur crée un salon.\n" +
+            "2. Le code du salon s'affiche.\n" +
+            "3. Les 3 autres joueurs entrent ce code.\n" +
+            "4. Chaque joueur choisit son équipe :\n" +
+            "   - Équipe 1 joue X.\n" +
+            "   - Équipe 2 joue O.\n" +
+            "5. Il faut 4 joueurs pour démarrer.\n" +
+            "6. Ordre des tours :\n" +
+            "   Équipe 1 J1 -> Équipe 2 J1 -> Équipe 1 J2 -> Équipe 2 J2.\n" +
+            "7. Le point sur un cube indique quel coéquipier peut reprendre ce cube.";
 
         [SerializeField] private TextMeshProUGUI connectedLabel;
         [SerializeField] private TextMeshProUGUI statusLabel;
@@ -43,6 +55,8 @@ namespace QuixoUnity.UI
         [SerializeField] private TextMeshProUGUI teamLobbyTeam1Label;
         [SerializeField] private TextMeshProUGUI teamLobbyTeam2Label;
         [SerializeField] private TextMeshProUGUI teamLobbyHintLabel;
+        [SerializeField] private GameObject teamLobbyHelpPanel;
+        [SerializeField] private TextMeshProUGUI teamLobbyHelpLabel;
         [SerializeField] private Button createTeamLobbyButton;
         [SerializeField] private Button joinTeam1Button;
         [SerializeField] private Button joinTeam2Button;
@@ -74,6 +88,7 @@ namespace QuixoUnity.UI
             OnlineSessionTransit.Clear();
             SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
             ResolveReferences();
+            EnsureTeamLobbyLayout();
             BindButtons();
             ApplyTheme();
             RefreshSessionDisplay();
@@ -196,7 +211,7 @@ namespace QuixoUnity.UI
         {
             SetPanelState(false, false, false, true);
             RenderTeamLobby();
-            SetStatus("Creez un salon 2v2 ou rejoignez un code existant.");
+            SetStatus("Créez un salon 2v2 ou rejoignez un code existant.");
         }
 
         private bool RequireOnlineAccount()
@@ -321,8 +336,15 @@ namespace QuixoUnity.UI
             }
 
             ResolveReferences();
+            string enteredCode = CurrentLobbyCode();
+            if (_teamLobbySnapshot?.Lobby == null && !string.IsNullOrWhiteSpace(enteredCode))
+            {
+                LoadTeamLobbyByCode(enteredCode);
+                return;
+            }
+
             SetTeamLobbyBusy(true);
-            SetStatus("Creation du salon 2v2...");
+            SetStatus("Création du salon 2v2...");
             onlineMatchService.CreateTeamLobby(HandleTeamLobbyResult);
         }
 
@@ -338,8 +360,20 @@ namespace QuixoUnity.UI
 
         public void RefreshTeamLobby()
         {
-            if (_teamLobbyBusy || _teamLobbySnapshot?.Lobby == null)
+            if (_teamLobbyBusy)
             {
+                return;
+            }
+
+            if (_teamLobbySnapshot?.Lobby == null)
+            {
+                string enteredCode = CurrentLobbyCode();
+                if (!string.IsNullOrWhiteSpace(enteredCode))
+                {
+                    LoadTeamLobbyByCode(enteredCode);
+                    return;
+                }
+
                 RenderTeamLobby();
                 return;
             }
@@ -356,7 +390,7 @@ namespace QuixoUnity.UI
             }
 
             SetTeamLobbyBusy(true);
-            SetStatus("Demarrage du match 2v2...");
+            SetStatus("Démarrage du match 2v2...");
             onlineMatchService.StartTeamLobby(_teamLobbySnapshot.Lobby.id, HandleTeamLobbyResult);
         }
 
@@ -399,10 +433,24 @@ namespace QuixoUnity.UI
                 return;
             }
 
-            string code = teamLobbyCodeInput != null ? teamLobbyCodeInput.text : string.Empty;
+            string code = _teamLobbySnapshot?.Lobby != null ? _teamLobbySnapshot.Lobby.lobby_code : CurrentLobbyCode();
+            Debug.Log($"[2v2 Lobby] join team request team={OnlineSessionTransit.TeamName(team)}");
             SetTeamLobbyBusy(true);
             SetStatus($"Connexion au salon {TeamDisplayName(team)}...");
             onlineMatchService.JoinTeamLobby(code, team, HandleTeamLobbyResult);
+        }
+
+        private void LoadTeamLobbyByCode(string code)
+        {
+            if (_teamLobbyBusy || !RequireOnlineAccount())
+            {
+                return;
+            }
+
+            Debug.Log($"[2v2 Lobby] code entered={code}");
+            SetTeamLobbyBusy(true);
+            SetStatus("Chargement du salon...");
+            onlineMatchService.FetchTeamLobbyByCode(code, HandleTeamLobbyResult);
         }
 
         private void HandleTeamLobbyResult(TeamLobbyOperationResult result)
@@ -422,6 +470,7 @@ namespace QuixoUnity.UI
             }
 
             _teamLobbySnapshot = result.Snapshot;
+            LogTeamLobbyState(result.Message);
             RenderTeamLobby();
             if (_teamLobbySnapshot?.Lobby != null)
             {
@@ -503,39 +552,86 @@ namespace QuixoUnity.UI
             string code = hasLobby ? _teamLobbySnapshot.Lobby.lobby_code : "aucun";
             if (teamLobbyCodeLabel != null)
             {
-                teamLobbyCodeLabel.text = $"Code salon : {code}";
+                // Code tres visible : ligne dediee + mention "partagez ce code".
+                teamLobbyCodeLabel.text = hasLobby
+                    ? $"Code du salon : <b>{code}</b>\n<size=80%>Partagez ce code avec vos 3 coéquipiers.</size>"
+                    : "Aucun salon actif.";
+                teamLobbyCodeLabel.richText = true;
             }
+
+            bool localInTeam1 = hasLobby
+                && (_teamLobbySnapshot.GetPlayer(TeamId.Team1, 0)?.user_id == SessionManager.UserId
+                    || _teamLobbySnapshot.GetPlayer(TeamId.Team1, 1)?.user_id == SessionManager.UserId);
+            bool localInTeam2 = hasLobby
+                && (_teamLobbySnapshot.GetPlayer(TeamId.Team2, 0)?.user_id == SessionManager.UserId
+                    || _teamLobbySnapshot.GetPlayer(TeamId.Team2, 1)?.user_id == SessionManager.UserId);
 
             if (teamLobbyTeam1Label != null)
             {
-                teamLobbyTeam1Label.text = $"Equipe 1 (X) : {SlotLabel(TeamId.Team1, 0)} + {SlotLabel(TeamId.Team1, 1)}";
+                string suffix = localInTeam1 ? "  <- vous êtes ici" : string.Empty;
+                teamLobbyTeam1Label.text = $"Équipe 1 (X) : {SlotLabel(TeamId.Team1, 0)} + {SlotLabel(TeamId.Team1, 1)}{suffix}";
             }
 
             if (teamLobbyTeam2Label != null)
             {
-                teamLobbyTeam2Label.text = $"Equipe 2 (O) : {SlotLabel(TeamId.Team2, 0)} + {SlotLabel(TeamId.Team2, 1)}";
+                string suffix = localInTeam2 ? "  <- vous êtes ici" : string.Empty;
+                teamLobbyTeam2Label.text = $"Équipe 2 (O) : {SlotLabel(TeamId.Team2, 0)} + {SlotLabel(TeamId.Team2, 1)}{suffix}";
             }
+
+            int playerCount = hasLobby ? _teamLobbySnapshot.Players.Count : 0;
+            bool team1Full = hasLobby && _teamLobbySnapshot.IsTeamFull(TeamId.Team1);
+            bool team2Full = hasLobby && _teamLobbySnapshot.IsTeamFull(TeamId.Team2);
 
             if (teamLobbyHintLabel != null)
             {
                 string cadence = hasLobby
                     ? TurnTimerSettings.DisplayName(_teamLobbySnapshot.Lobby.time_control_key, _teamLobbySnapshot.Lobby.initial_seconds, _teamLobbySnapshot.Lobby.increment_seconds)
                     : TurnTimerSettings.DisplayCurrent();
+                string localState = localInTeam1
+                    ? "Vous êtes dans l'équipe 1 (X)."
+                    : localInTeam2
+                        ? "Vous êtes dans l'équipe 2 (O)."
+                        : _teamLobbySnapshot != null && _teamLobbySnapshot.IsFull
+                            ? "Salon complet."
+                            : "Choisissez une équipe.";
                 teamLobbyHintLabel.text = hasLobby
-                    ? $"Cadence : {cadence}. Ordre : Equipe 1 joueur 1 -> Equipe 2 joueur 1 -> Equipe 1 joueur 2 -> Equipe 2 joueur 2."
-                    : $"Cadence : {cadence}. Creez un salon, partagez le code, puis les joueurs rejoignent l'equipe 1 ou l'equipe 2.";
+                    ? $"{localState}\nCadence : {cadence}. Joueurs présents : {playerCount}/4."
+                    : $"Créez un salon ou entrez un code reçu.\nCadence : {cadence}.";
+            }
+
+            if (teamLobbyHelpLabel != null)
+            {
+                teamLobbyHelpLabel.text = TeamLobbyHelpText;
             }
 
             bool online = SessionManager.IsOnline;
             bool isLobbyOpen = hasLobby && string.Equals(_teamLobbySnapshot.Lobby.status, "lobby", System.StringComparison.OrdinalIgnoreCase);
             bool isHost = hasLobby && _teamLobbySnapshot.Lobby.host_user_id == SessionManager.UserId;
             bool hasLocal = hasLobby && _teamLobbySnapshot.HasUser(SessionManager.UserId);
-            SetInteractable(createTeamLobbyButton, online && !_teamLobbyBusy && !hasLobby);
-            SetInteractable(joinTeam1Button, online && !_teamLobbyBusy && !hasLocal);
-            SetInteractable(joinTeam2Button, online && !_teamLobbyBusy && !hasLocal);
+            bool codeEntered = !string.IsNullOrWhiteSpace(CurrentLobbyCode());
+            bool canLoadLobby = online && !_teamLobbyBusy && !hasLobby && codeEntered;
+            bool canCreateLobby = online && !_teamLobbyBusy && !hasLobby && !codeEntered;
+            bool canJoinTeam1 = online && !_teamLobbyBusy && hasLobby && isLobbyOpen && !hasLocal && !team1Full;
+            bool canJoinTeam2 = online && !_teamLobbyBusy && hasLobby && isLobbyOpen && !hasLocal && !team2Full;
+
+            SetInteractable(createTeamLobbyButton, canCreateLobby || canLoadLobby);
+            // Bouton equipe : desactive si deja dans une equipe OU si cette equipe est pleine.
+            SetInteractable(joinTeam1Button, canJoinTeam1);
+            SetInteractable(joinTeam2Button, canJoinTeam2);
             SetInteractable(refreshTeamLobbyButton, online && !_teamLobbyBusy && hasLobby);
             SetInteractable(leaveTeamLobbyButton, online && !_teamLobbyBusy);
-            SetInteractable(startTeamLobbyButton, online && !_teamLobbyBusy && isHost && isLobbyOpen && _teamLobbySnapshot.IsFull);
+            SetInteractable(startTeamLobbyButton, online && !_teamLobbyBusy && isHost && isLobbyOpen && _teamLobbySnapshot != null && _teamLobbySnapshot.IsFull);
+
+            // Labels dynamiques pour mieux guider le joueur.
+            SetButtonLabel(createTeamLobbyButton, codeEntered && !hasLobby ? "Charger le salon" : "Créer un salon");
+            SetButtonLabel(joinTeam1Button, team1Full && !localInTeam1 ? "Équipe 1 complète" : "Rejoindre équipe 1 (X)");
+            SetButtonLabel(joinTeam2Button, team2Full && !localInTeam2 ? "Équipe 2 complète" : "Rejoindre équipe 2 (O)");
+            SetButtonLabel(startTeamLobbyButton,
+                _teamLobbySnapshot != null && _teamLobbySnapshot.IsFull
+                    ? "Démarrer la partie"
+                    : "En attente de 4 joueurs");
+            SetButtonLabel(refreshTeamLobbyButton, "Rafraîchir");
+            SetButtonLabel(leaveTeamLobbyButton, "Retour");
         }
 
         private string SlotLabel(TeamId team, int slotIndex)
@@ -549,9 +645,56 @@ namespace QuixoUnity.UI
             return string.IsNullOrWhiteSpace(player.username) ? "joueur" : player.username;
         }
 
+        private string CurrentLobbyCode()
+        {
+            return NormalizeLobbyCode(teamLobbyCodeInput != null ? teamLobbyCodeInput.text : string.Empty);
+        }
+
+        private static string NormalizeLobbyCode(string code)
+        {
+            return (code ?? string.Empty).Trim().Replace(" ", string.Empty).ToUpperInvariant();
+        }
+
+        private void LogTeamLobbyState(string resultMessage)
+        {
+            if (_teamLobbySnapshot?.Lobby == null)
+            {
+                return;
+            }
+
+            int team1Slots = _teamLobbySnapshot.CountTeam(TeamId.Team1);
+            int team2Slots = _teamLobbySnapshot.CountTeam(TeamId.Team2);
+            bool hasLocal = _teamLobbySnapshot.HasUser(SessionManager.UserId);
+            bool isLobbyOpen = string.Equals(_teamLobbySnapshot.Lobby.status, "lobby", System.StringComparison.OrdinalIgnoreCase);
+            bool canJoinTeam1 = SessionManager.IsOnline && !_teamLobbyBusy && isLobbyOpen && !hasLocal && team1Slots < 2;
+            bool canJoinTeam2 = SessionManager.IsOnline && !_teamLobbyBusy && isLobbyOpen && !hasLocal && team2Slots < 2;
+            string reason = !isLobbyOpen
+                ? "salon non ouvert"
+                : hasLocal
+                    ? "utilisateur deja dans une equipe"
+                    : _teamLobbySnapshot.IsFull
+                        ? "salon complet"
+                        : "places disponibles";
+
+            Debug.Log($"[2v2 Lobby] loaded lobby={_teamLobbySnapshot.Lobby.id} team1Slots={team1Slots}/2 team2Slots={team2Slots}/2");
+            Debug.Log($"[2v2 Lobby] canJoinTeam1={canJoinTeam1} canJoinTeam2={canJoinTeam2} reason={reason}");
+
+            if (!string.IsNullOrWhiteSpace(resultMessage) && resultMessage.ToLowerInvariant().Contains("rejoint"))
+            {
+                TeamId joined = _teamLobbySnapshot.GetPlayer(TeamId.Team1, 0)?.user_id == SessionManager.UserId
+                    || _teamLobbySnapshot.GetPlayer(TeamId.Team1, 1)?.user_id == SessionManager.UserId
+                    ? TeamId.Team1
+                    : _teamLobbySnapshot.GetPlayer(TeamId.Team2, 0)?.user_id == SessionManager.UserId
+                        || _teamLobbySnapshot.GetPlayer(TeamId.Team2, 1)?.user_id == SessionManager.UserId
+                        ? TeamId.Team2
+                        : TeamId.None;
+                Debug.Log($"[2v2 Lobby] joined team={OnlineSessionTransit.TeamName(joined)}");
+            }
+        }
+
         private static string TeamDisplayName(TeamId team)
         {
-            return team == TeamId.Team1 ? "l'equipe 1" : team == TeamId.Team2 ? "l'equipe 2" : "une equipe";
+            return team == TeamId.Team1 ? "l'équipe 1" : team == TeamId.Team2 ? "l'équipe 2" : "une équipe";
         }
 
         private void RefreshTimerSelection()
@@ -719,6 +862,8 @@ namespace QuixoUnity.UI
             teamLobbyTeam1Label ??= FindChild<TextMeshProUGUI>("TeamLobbyTeam1Label");
             teamLobbyTeam2Label ??= FindChild<TextMeshProUGUI>("TeamLobbyTeam2Label");
             teamLobbyHintLabel ??= FindChild<TextMeshProUGUI>("TeamLobbyHintLabel");
+            teamLobbyHelpPanel ??= FindChild<Transform>("TeamLobbyHelpPanel")?.gameObject;
+            teamLobbyHelpLabel ??= FindChild<TextMeshProUGUI>("TeamLobbyHelpLabel");
             createTeamLobbyButton ??= FindChild<Button>("CreateTeamLobbyButton");
             joinTeam1Button ??= FindChild<Button>("JoinTeam1Button");
             joinTeam2Button ??= FindChild<Button>("JoinTeam2Button");
@@ -739,6 +884,139 @@ namespace QuixoUnity.UI
             if (themeButton != null)
             {
                 _themeButtonLabel = themeButton.GetComponentInChildren<TextMeshProUGUI>(true);
+            }
+        }
+
+        private void EnsureTeamLobbyLayout()
+        {
+            if (teamLobbyPanel == null)
+            {
+                return;
+            }
+
+            var mainRect = teamLobbyPanel.GetComponent<RectTransform>();
+            if (mainRect != null)
+            {
+                SetAnchored(mainRect, new Vector2(0.5f, 1f), new Vector2(-285f, -220f), new Vector2(500f, 620f));
+            }
+
+            EnsurePanelSurface(teamLobbyPanel);
+            ConfigureTeamLobbyInput();
+            ConfigureTeamLobbyLabelRects();
+            EnsureTeamLobbyHelpPanel();
+        }
+
+        private void ConfigureTeamLobbyInput()
+        {
+            if (teamLobbyCodeInput == null)
+            {
+                return;
+            }
+
+            if (teamLobbyCodeInput.placeholder is TextMeshProUGUI placeholderLabel)
+            {
+                placeholderLabel.text = "Entrer le code du salon";
+                placeholderLabel.enableAutoSizing = true;
+                placeholderLabel.fontSizeMin = 12f;
+                placeholderLabel.fontSizeMax = 20f;
+            }
+        }
+
+        private void ConfigureTeamLobbyLabelRects()
+        {
+            ConfigureLabel(teamLobbyCodeLabel, new Vector2(0.5f, 1f), new Vector2(0f, -60f), new Vector2(440f, 54f), 18f, 22f, TextAlignmentOptions.Center);
+            ConfigureLabel(teamLobbyTeam1Label, new Vector2(0f, 1f), new Vector2(34f, -180f), new Vector2(430f, 34f), 14f, 19f, TextAlignmentOptions.Left);
+            ConfigureLabel(teamLobbyTeam2Label, new Vector2(0f, 1f), new Vector2(34f, -224f), new Vector2(430f, 34f), 14f, 19f, TextAlignmentOptions.Left);
+            ConfigureLabel(teamLobbyHintLabel, new Vector2(0.5f, 1f), new Vector2(0f, -532f), new Vector2(440f, 74f), 12f, 15f, TextAlignmentOptions.Center);
+        }
+
+        private static void ConfigureLabel(TextMeshProUGUI label, Vector2 anchor, Vector2 anchoredPosition, Vector2 size, float minSize, float maxSize, TextAlignmentOptions alignment)
+        {
+            if (label == null)
+            {
+                return;
+            }
+
+            SetAnchored(label.rectTransform, anchor, anchoredPosition, size);
+            label.alignment = alignment;
+            label.enableWordWrapping = true;
+            label.enableAutoSizing = true;
+            label.fontSizeMin = minSize;
+            label.fontSizeMax = maxSize;
+            label.overflowMode = TextOverflowModes.Ellipsis;
+        }
+
+        private void EnsureTeamLobbyHelpPanel()
+        {
+            Transform parent = teamLobbyPanel.transform.parent;
+            if (parent == null)
+            {
+                return;
+            }
+
+            if (teamLobbyHelpPanel == null)
+            {
+                teamLobbyHelpPanel = new GameObject("TeamLobbyHelpPanel", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
+                teamLobbyHelpPanel.transform.SetParent(parent, false);
+            }
+            else if (teamLobbyHelpPanel.transform.parent != parent)
+            {
+                teamLobbyHelpPanel.transform.SetParent(parent, false);
+            }
+
+            var helpRect = teamLobbyHelpPanel.GetComponent<RectTransform>();
+            if (helpRect != null)
+            {
+                SetAnchored(helpRect, new Vector2(0.5f, 1f), new Vector2(285f, -220f), new Vector2(500f, 620f));
+            }
+
+            EnsurePanelSurface(teamLobbyHelpPanel);
+
+            if (teamLobbyHelpLabel == null)
+            {
+                var textObject = new GameObject("TeamLobbyHelpLabel", typeof(RectTransform));
+                textObject.transform.SetParent(teamLobbyHelpPanel.transform, false);
+                teamLobbyHelpLabel = textObject.AddComponent<TextMeshProUGUI>();
+            }
+
+            teamLobbyHelpLabel.text = TeamLobbyHelpText;
+            teamLobbyHelpLabel.alignment = TextAlignmentOptions.TopLeft;
+            teamLobbyHelpLabel.enableWordWrapping = true;
+            teamLobbyHelpLabel.enableAutoSizing = true;
+            teamLobbyHelpLabel.fontSizeMin = 12f;
+            teamLobbyHelpLabel.fontSizeMax = 17f;
+            teamLobbyHelpLabel.overflowMode = TextOverflowModes.Ellipsis;
+            teamLobbyHelpLabel.raycastTarget = false;
+            Stretch(teamLobbyHelpLabel.rectTransform, new Vector2(34f, 28f), new Vector2(-34f, -28f));
+            teamLobbyHelpPanel.SetActive(teamLobbyPanel.activeSelf);
+        }
+
+        private static void EnsurePanelSurface(GameObject panel)
+        {
+            if (panel == null)
+            {
+                return;
+            }
+
+            var image = panel.GetComponent<Image>();
+            if (image == null)
+            {
+                image = panel.AddComponent<Image>();
+            }
+
+            image.raycastTarget = false;
+
+            if (panel.GetComponent<Shadow>() == null)
+            {
+                var shadow = panel.AddComponent<Shadow>();
+                shadow.effectColor = new Color(0f, 0f, 0f, 0.24f);
+                shadow.effectDistance = new Vector2(0f, -4f);
+            }
+
+            if (panel.GetComponent<Outline>() == null)
+            {
+                var outline = panel.AddComponent<Outline>();
+                outline.effectDistance = new Vector2(1f, 1f);
             }
         }
 
@@ -769,6 +1047,24 @@ namespace QuixoUnity.UI
             Bind(startTeamLobbyButton, StartTeamLobby);
             Bind(refreshTeamLobbyButton, RefreshTeamLobby);
             Bind(leaveTeamLobbyButton, LeaveTeamLobby);
+            if (teamLobbyCodeInput != null)
+            {
+                teamLobbyCodeInput.onValueChanged.RemoveListener(HandleTeamLobbyCodeChanged);
+                teamLobbyCodeInput.onValueChanged.AddListener(HandleTeamLobbyCodeChanged);
+            }
+        }
+
+        private void HandleTeamLobbyCodeChanged(string value)
+        {
+            string entered = NormalizeLobbyCode(value);
+            string loaded = NormalizeLobbyCode(_teamLobbySnapshot?.Lobby?.lobby_code);
+            if (_teamLobbySnapshot?.Lobby != null && !string.IsNullOrWhiteSpace(entered) && entered != loaded)
+            {
+                StopTeamLobbyPolling();
+                _teamLobbySnapshot = null;
+            }
+
+            RenderTeamLobby();
         }
 
         private void RefreshSessionDisplay()
@@ -828,9 +1124,51 @@ namespace QuixoUnity.UI
             ApplyButton(startTeamLobbyButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
             ApplyButton(refreshTeamLobbyButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
             ApplyButton(leaveTeamLobbyButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyTeamLobbyPanelTheme(palette);
             RefreshThemeLabel();
             RefreshTimerSelection();
             SetOnlineSearching(_searchingOnline);
+        }
+
+        private void ApplyTeamLobbyPanelTheme(GameplayPalette palette)
+        {
+            ApplyPanelTheme(teamLobbyPanel, palette);
+            ApplyPanelTheme(teamLobbyHelpPanel, palette);
+
+            if (teamLobbyHelpLabel != null)
+            {
+                teamLobbyHelpLabel.color = palette.UiText;
+            }
+
+            if (teamLobbyCodeLabel != null)
+            {
+                teamLobbyCodeLabel.color = palette.UiText;
+            }
+
+            if (teamLobbyHintLabel != null)
+            {
+                teamLobbyHintLabel.color = palette.UiMuted;
+            }
+        }
+
+        private static void ApplyPanelTheme(GameObject panel, GameplayPalette palette)
+        {
+            if (panel == null)
+            {
+                return;
+            }
+
+            var image = panel.GetComponent<Image>();
+            if (image != null)
+            {
+                image.color = palette.MenuPanel;
+            }
+
+            var outline = panel.GetComponent<Outline>();
+            if (outline != null)
+            {
+                outline.effectColor = new Color(palette.UiText.r, palette.UiText.g, palette.UiText.b, 0.18f);
+            }
         }
 
         private void RefreshThemeLabel()
@@ -894,6 +1232,7 @@ namespace QuixoUnity.UI
             if (modePanel != null) modePanel.SetActive(mode);
             if (gamePanel != null) gamePanel.SetActive(game);
             if (teamLobbyPanel != null) teamLobbyPanel.SetActive(teamLobby);
+            if (teamLobbyHelpPanel != null) teamLobbyHelpPanel.SetActive(teamLobby);
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action)
@@ -974,6 +1313,34 @@ namespace QuixoUnity.UI
             {
                 button.interactable = interactable;
             }
+        }
+
+        private static void SetAnchored(RectTransform rect, Vector2 anchor, Vector2 anchoredPosition, Vector2 size)
+        {
+            if (rect == null)
+            {
+                return;
+            }
+
+            rect.anchorMin = anchor;
+            rect.anchorMax = anchor;
+            rect.pivot = anchor;
+            rect.anchoredPosition = anchoredPosition;
+            rect.sizeDelta = size;
+        }
+
+        private static void Stretch(RectTransform rect, Vector2 offsetMin, Vector2 offsetMax)
+        {
+            if (rect == null)
+            {
+                return;
+            }
+
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.offsetMin = offsetMin;
+            rect.offsetMax = offsetMax;
         }
 
         private static void SetActive(Button button, bool active)
