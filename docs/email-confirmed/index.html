@@ -6,6 +6,31 @@
   <meta name="description" content="Confirmation de l'adresse email Quixo / Qomet.">
   <title>Email confirme - Quixo / Qomet</title>
   <link rel="stylesheet" href="style.css">
+  <script>
+    (function () {
+      var hash = window.location.hash || '';
+      var confirmedFromHash = hash.indexOf('access_token=') !== -1;
+      var type = '';
+      if (confirmedFromHash) {
+        try {
+          type = new URLSearchParams(hash.slice(1)).get('type') || '';
+        } catch (e) {
+          type = '';
+        }
+      }
+
+      if (confirmedFromHash) {
+        document.documentElement.dataset.confirmedFromHash = '1';
+        if (type) {
+          document.documentElement.dataset.authType = type;
+        }
+      }
+
+      if (hash) {
+        history.replaceState(null, document.title, window.location.pathname + window.location.search);
+      }
+    })();
+  </script>
 </head>
 <body>
   <div class="orb orb-a"></div>
@@ -15,9 +40,20 @@
   <main class="card">
     <span class="status">Compte valide</span>
     <h1>Email confirme</h1>
-    <p>Votre adresse email a bien ete validee.</p>
-    <p>Vous pouvez maintenant vous connecter dans le jeu avec vos identifiants.</p>
+    <p id="message">Votre adresse email a bien ete validee.</p>
+    <p>Vous pouvez maintenant retourner dans le jeu et vous connecter avec vos identifiants.</p>
     <a href="https://bouzekrimohamed.github.io/quixocomet/download/">Retour a la page de telechargement</a>
   </main>
+  <script>
+    (function () {
+      var root = document.documentElement;
+      if (root.dataset.confirmedFromHash === '1') {
+        var message = document.getElementById('message');
+        if (message) {
+          message.textContent = 'Email confirme. Vous pouvez maintenant retourner dans le jeu et vous connecter.';
+        }
+      }
+    })();
+  </script>
 </body>
 </html>

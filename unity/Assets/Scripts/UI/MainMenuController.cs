@@ -1,5 +1,7 @@
+using System.Collections;
 using QuixoUnity.Auth;
 using QuixoUnity.Core;
+using QuixoUnity.Gameplay;
 using QuixoUnity.Online;
 using QuixoUnity.Social;
 using TMPro;
@@ -25,15 +27,33 @@ namespace QuixoUnity.UI
         [SerializeField] private Button gameBackButton;
         [SerializeField] private Button quixoOnlineButton;
         [SerializeField] private Button qometOnlineButton;
+        [SerializeField] private Button quixoTeamOnlineButton;
         [SerializeField] private Button cancelOnlineButton;
         [SerializeField] private Button friendsButton;
         [SerializeField] private Button themeButton;
         [SerializeField] private Button logoutButton;
         [SerializeField] private Button quitButton;
+        [SerializeField] private Button timerUnlimitedButton;
+        [SerializeField] private Button timer15Button;
+        [SerializeField] private Button timer30Button;
+        [SerializeField] private Button timer60Button;
+        [SerializeField] private TextMeshProUGUI timerSummaryLabel;
+        [SerializeField] private TMP_InputField teamLobbyCodeInput;
+        [SerializeField] private TextMeshProUGUI teamLobbyCodeLabel;
+        [SerializeField] private TextMeshProUGUI teamLobbyTeam1Label;
+        [SerializeField] private TextMeshProUGUI teamLobbyTeam2Label;
+        [SerializeField] private TextMeshProUGUI teamLobbyHintLabel;
+        [SerializeField] private Button createTeamLobbyButton;
+        [SerializeField] private Button joinTeam1Button;
+        [SerializeField] private Button joinTeam2Button;
+        [SerializeField] private Button startTeamLobbyButton;
+        [SerializeField] private Button refreshTeamLobbyButton;
+        [SerializeField] private Button leaveTeamLobbyButton;
         [SerializeField] private GameObject friendsPanel;
         [SerializeField] private GameObject mainActionsPanel;
         [SerializeField] private GameObject modePanel;
         [SerializeField] private GameObject gamePanel;
+        [SerializeField] private GameObject teamLobbyPanel;
         [SerializeField] private FriendsView friendsView;
         [SerializeField] private AuthService authService;
         [SerializeField] private FriendService friendService;
@@ -44,6 +64,9 @@ namespace QuixoUnity.UI
         private bool _loadingGameplay;
         private bool _searchingOnline;
         private GameKind _searchingKind;
+        private bool _teamLobbyBusy;
+        private TeamLobbySnapshot _teamLobbySnapshot;
+        private Coroutine _teamLobbyPollRoutine;
 
         private void Awake()
         {
@@ -55,6 +78,7 @@ namespace QuixoUnity.UI
             ApplyTheme();
             RefreshSessionDisplay();
             RefreshOnlineAvailability();
+            RefreshTimerSelection();
             if (friendsPanel != null)
             {
                 friendsPanel.SetActive(false);
@@ -85,6 +109,7 @@ namespace QuixoUnity.UI
         private void OnDestroy()
         {
             onlinePresenceService?.StopPresence();
+            StopTeamLobbyPolling();
         }
 
         public void StartQuixo()
@@ -117,6 +142,16 @@ namespace QuixoUnity.UI
             StartOnlineGame(GameKind.Qomet);
         }
 
+        public void StartOnlineQuixoTeam()
+        {
+            if (!RequireOnlineAccount())
+            {
+                return;
+            }
+
+            ShowTeamLobbyChoice();
+        }
+
         public void ShowModeChoice()
         {
             SetPanelState(false, true, false);
@@ -129,6 +164,7 @@ namespace QuixoUnity.UI
             SetActive(qometButton, true);
             SetActive(quixoOnlineButton, false);
             SetActive(qometOnlineButton, false);
+            SetActive(quixoTeamOnlineButton, false);
             SetInteractable(quixoButton, true);
             SetInteractable(qometButton, true);
         }
@@ -145,13 +181,22 @@ namespace QuixoUnity.UI
             SetActive(qometButton, false);
             SetActive(quixoOnlineButton, true);
             SetActive(qometOnlineButton, true);
+            SetActive(quixoTeamOnlineButton, true);
             SetInteractable(quixoOnlineButton, true);
             SetInteractable(qometOnlineButton, true);
+            SetInteractable(quixoTeamOnlineButton, true);
         }
 
         public void ShowMainActions()
         {
             SetPanelState(true, false, false);
+        }
+
+        public void ShowTeamLobbyChoice()
+        {
+            SetPanelState(false, false, false, true);
+            RenderTeamLobby();
+            SetStatus("Creez un lobby 2v2 ou rejoignez un code existant.");
         }
 
         private bool RequireOnlineAccount()
@@ -171,6 +216,7 @@ namespace QuixoUnity.UI
             bool online = SessionManager.IsOnline;
             SetInteractable(quixoOnlineButton, online && !_searchingOnline);
             SetInteractable(qometOnlineButton, online && !_searchingOnline);
+            SetInteractable(quixoTeamOnlineButton, online && !_searchingOnline);
             SetInteractable(friendsButton, online && !_searchingOnline);
             if (!online && SessionManager.IsOffline && statusLabel != null && string.IsNullOrEmpty(statusLabel.text))
             {
@@ -247,6 +293,291 @@ namespace QuixoUnity.UI
             Application.Quit();
         }
 
+        public void SelectTimerUnlimited()
+        {
+            SelectTimer(TurnTimerSettings.Unlimited);
+        }
+
+        public void SelectTimer15()
+        {
+            SelectTimer(15);
+        }
+
+        public void SelectTimer30()
+        {
+            SelectTimer(30);
+        }
+
+        public void SelectTimer60()
+        {
+            SelectTimer(60);
+        }
+
+        public void CreateTeamLobby()
+        {
+            if (_teamLobbyBusy || !RequireOnlineAccount())
+            {
+                return;
+            }
+
+            ResolveReferences();
+            SetTeamLobbyBusy(true);
+            SetStatus("Creation du lobby 2v2...");
+            onlineMatchService.CreateTeamLobby(HandleTeamLobbyResult);
+        }
+
+        public void JoinTeam1Lobby()
+        {
+            JoinTeamLobby(TeamId.Team1);
+        }
+
+        public void JoinTeam2Lobby()
+        {
+            JoinTeamLobby(TeamId.Team2);
+        }
+
+        public void RefreshTeamLobby()
+        {
+            if (_teamLobbyBusy || _teamLobbySnapshot?.Lobby == null)
+            {
+                RenderTeamLobby();
+                return;
+            }
+
+            SetTeamLobbyBusy(true);
+            onlineMatchService.FetchTeamLobby(_teamLobbySnapshot.Lobby.id, HandleTeamLobbyResult);
+        }
+
+        public void StartTeamLobby()
+        {
+            if (_teamLobbyBusy || _teamLobbySnapshot?.Lobby == null)
+            {
+                return;
+            }
+
+            SetTeamLobbyBusy(true);
+            SetStatus("Demarrage du match 2v2...");
+            onlineMatchService.StartTeamLobby(_teamLobbySnapshot.Lobby.id, HandleTeamLobbyResult);
+        }
+
+        public void LeaveTeamLobby()
+        {
+            if (_teamLobbyBusy)
+            {
+                return;
+            }
+
+            string lobbyId = _teamLobbySnapshot?.Lobby?.id;
+            StopTeamLobbyPolling();
+            _teamLobbySnapshot = null;
+            RenderTeamLobby();
+            if (string.IsNullOrWhiteSpace(lobbyId))
+            {
+                ShowOnlineChoice();
+                return;
+            }
+
+            SetTeamLobbyBusy(true);
+            onlineMatchService.LeaveTeamLobby(lobbyId, result =>
+            {
+                SetTeamLobbyBusy(false);
+                SetStatus(result != null ? result.Message : "Lobby quitte.");
+                ShowOnlineChoice();
+            });
+        }
+
+        private void SelectTimer(int seconds)
+        {
+            TurnTimerSettings.SelectedSeconds = seconds;
+            RefreshTimerSelection();
+        }
+
+        private void JoinTeamLobby(TeamId team)
+        {
+            if (_teamLobbyBusy || !RequireOnlineAccount())
+            {
+                return;
+            }
+
+            string code = teamLobbyCodeInput != null ? teamLobbyCodeInput.text : string.Empty;
+            SetTeamLobbyBusy(true);
+            SetStatus($"Connexion au lobby {OnlineSessionTransit.TeamName(team)}...");
+            onlineMatchService.JoinTeamLobby(code, team, HandleTeamLobbyResult);
+        }
+
+        private void HandleTeamLobbyResult(TeamLobbyOperationResult result)
+        {
+            SetTeamLobbyBusy(false);
+            if (result == null)
+            {
+                SetStatus("Operation lobby impossible.");
+                return;
+            }
+
+            SetStatus(result.Message);
+            if (!result.Success)
+            {
+                RenderTeamLobby();
+                return;
+            }
+
+            _teamLobbySnapshot = result.Snapshot;
+            RenderTeamLobby();
+            if (_teamLobbySnapshot?.Lobby != null)
+            {
+                StartTeamLobbyPolling();
+            }
+
+            TryLaunchStartedTeamLobby();
+        }
+
+        private void TryLaunchStartedTeamLobby()
+        {
+            if (_teamLobbySnapshot == null || !_teamLobbySnapshot.IsStarted || _teamLobbySnapshot.Match == null)
+            {
+                return;
+            }
+
+            if (!OnlineSessionTransit.IsValidForLocalPlayer(_teamLobbySnapshot.Match, SessionManager.UserId))
+            {
+                SetStatus("Match 2v2 inaccessible pour ce compte.");
+                return;
+            }
+
+            StopTeamLobbyPolling();
+            OnlineSessionTransit.StartTeam(_teamLobbySnapshot.Match, SessionManager.UserId, _teamLobbySnapshot);
+            OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds > 0
+                ? TurnTimerSettings.SelectedSeconds
+                : TurnTimerSettings.DefaultSeconds;
+            SceneTransit.SelectedGame = GameKind.Quixo;
+            SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
+            LoadGameplay();
+        }
+
+        private void StartTeamLobbyPolling()
+        {
+            if (_teamLobbyPollRoutine != null || _teamLobbySnapshot?.Lobby == null)
+            {
+                return;
+            }
+
+            _teamLobbyPollRoutine = StartCoroutine(TeamLobbyPollRoutine());
+        }
+
+        private void StopTeamLobbyPolling()
+        {
+            if (_teamLobbyPollRoutine != null)
+            {
+                StopCoroutine(_teamLobbyPollRoutine);
+                _teamLobbyPollRoutine = null;
+            }
+        }
+
+        private IEnumerator TeamLobbyPollRoutine()
+        {
+            while (_teamLobbySnapshot?.Lobby != null && !_loadingGameplay)
+            {
+                yield return new WaitForSeconds(2f);
+                if (_teamLobbyBusy || _teamLobbySnapshot?.Lobby == null)
+                {
+                    continue;
+                }
+
+                bool done = false;
+                onlineMatchService.FetchTeamLobby(_teamLobbySnapshot.Lobby.id, result =>
+                {
+                    done = true;
+                    if (result != null && result.Success)
+                    {
+                        _teamLobbySnapshot = result.Snapshot;
+                        RenderTeamLobby();
+                        TryLaunchStartedTeamLobby();
+                    }
+                });
+                yield return new WaitUntil(() => done);
+            }
+
+            _teamLobbyPollRoutine = null;
+        }
+
+        private void RenderTeamLobby()
+        {
+            bool hasLobby = _teamLobbySnapshot?.Lobby != null;
+            string code = hasLobby ? _teamLobbySnapshot.Lobby.lobby_code : "aucun";
+            if (teamLobbyCodeLabel != null)
+            {
+                teamLobbyCodeLabel.text = $"Code lobby : {code}";
+            }
+
+            if (teamLobbyTeam1Label != null)
+            {
+                teamLobbyTeam1Label.text = $"Equipe 1 (X) : {SlotLabel(TeamId.Team1, 0)} + {SlotLabel(TeamId.Team1, 1)}";
+            }
+
+            if (teamLobbyTeam2Label != null)
+            {
+                teamLobbyTeam2Label.text = $"Equipe 2 (O) : {SlotLabel(TeamId.Team2, 0)} + {SlotLabel(TeamId.Team2, 1)}";
+            }
+
+            if (teamLobbyHintLabel != null)
+            {
+                teamLobbyHintLabel.text = hasLobby
+                    ? "Ordre : Equipe 1 joueur 1 -> Equipe 2 joueur 1 -> Equipe 1 joueur 2 -> Equipe 2 joueur 2."
+                    : "Creez un lobby, partagez le code, puis les joueurs rejoignent Team 1 ou Team 2.";
+            }
+
+            bool online = SessionManager.IsOnline;
+            bool isLobbyOpen = hasLobby && string.Equals(_teamLobbySnapshot.Lobby.status, "lobby", System.StringComparison.OrdinalIgnoreCase);
+            bool isHost = hasLobby && _teamLobbySnapshot.Lobby.host_user_id == SessionManager.UserId;
+            bool hasLocal = hasLobby && _teamLobbySnapshot.HasUser(SessionManager.UserId);
+            SetInteractable(createTeamLobbyButton, online && !_teamLobbyBusy && !hasLobby);
+            SetInteractable(joinTeam1Button, online && !_teamLobbyBusy && !hasLocal);
+            SetInteractable(joinTeam2Button, online && !_teamLobbyBusy && !hasLocal);
+            SetInteractable(refreshTeamLobbyButton, online && !_teamLobbyBusy && hasLobby);
+            SetInteractable(leaveTeamLobbyButton, online && !_teamLobbyBusy);
+            SetInteractable(startTeamLobbyButton, online && !_teamLobbyBusy && isHost && isLobbyOpen && _teamLobbySnapshot.IsFull);
+        }
+
+        private string SlotLabel(TeamId team, int slotIndex)
+        {
+            var player = _teamLobbySnapshot?.GetPlayer(team, slotIndex);
+            if (player == null)
+            {
+                return "libre";
+            }
+
+            return string.IsNullOrWhiteSpace(player.username) ? "joueur" : player.username;
+        }
+
+        private void RefreshTimerSelection()
+        {
+            int current = TurnTimerSettings.SelectedSeconds;
+            HighlightTimerButton(timerUnlimitedButton, current == TurnTimerSettings.Unlimited);
+            HighlightTimerButton(timer15Button, current == 15);
+            HighlightTimerButton(timer30Button, current == 30);
+            HighlightTimerButton(timer60Button, current == 60);
+            if (timerSummaryLabel != null)
+            {
+                timerSummaryLabel.text = $"Temps par tour : {TurnTimerSettings.DisplayCurrent()}";
+            }
+        }
+
+        private void HighlightTimerButton(Button button, bool selected)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+            // Le bouton selectionne prend la couleur principale, les autres restent en secondaire.
+            ApplyButton(
+                button,
+                selected ? palette.UiButton : palette.UiButtonSecondary,
+                palette.UiButtonText,
+                palette.UiButtonDisabled);
+        }
+
         private void StartGame(GameKind kind)
         {
             if (_loadingGameplay)
@@ -307,6 +638,12 @@ namespace QuixoUnity.UI
                 }
 
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId);
+                // V1 matchmaking aleatoire : chaque client applique sa propre preference de timer.
+                // C'est documente dans le SUPABASE_SETUP. La duree par defaut est 30s si l'utilisateur
+                // a choisi "sans limite", pour eviter une partie qui ne se termine jamais cote prof.
+                OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds > 0
+                    ? TurnTimerSettings.SelectedSeconds
+                    : TurnTimerSettings.DefaultSeconds;
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
                 LoadGameplay();
@@ -363,15 +700,33 @@ namespace QuixoUnity.UI
             gameBackButton ??= FindChild<Button>("GameBackButton");
             quixoOnlineButton ??= FindChild<Button>("QuixoOnlineButton");
             qometOnlineButton ??= FindChild<Button>("QometOnlineButton");
+            quixoTeamOnlineButton ??= FindChild<Button>("QuixoTeamOnlineButton");
             cancelOnlineButton ??= FindChild<Button>("CancelOnlineButton");
             friendsButton ??= FindChild<Button>("FriendsButton");
             themeButton ??= FindChild<Button>("ThemeButton");
             logoutButton ??= FindChild<Button>("LogoutButton");
             quitButton ??= FindChild<Button>("QuitButton");
+            timerUnlimitedButton ??= FindChild<Button>("TimerUnlimitedButton");
+            timer15Button ??= FindChild<Button>("Timer15Button");
+            timer30Button ??= FindChild<Button>("Timer30Button");
+            timer60Button ??= FindChild<Button>("Timer60Button");
+            timerSummaryLabel ??= FindChild<TextMeshProUGUI>("TimerSummaryLabel");
+            teamLobbyCodeInput ??= FindChild<TMP_InputField>("TeamLobbyCodeInput");
+            teamLobbyCodeLabel ??= FindChild<TextMeshProUGUI>("TeamLobbyCodeLabel");
+            teamLobbyTeam1Label ??= FindChild<TextMeshProUGUI>("TeamLobbyTeam1Label");
+            teamLobbyTeam2Label ??= FindChild<TextMeshProUGUI>("TeamLobbyTeam2Label");
+            teamLobbyHintLabel ??= FindChild<TextMeshProUGUI>("TeamLobbyHintLabel");
+            createTeamLobbyButton ??= FindChild<Button>("CreateTeamLobbyButton");
+            joinTeam1Button ??= FindChild<Button>("JoinTeam1Button");
+            joinTeam2Button ??= FindChild<Button>("JoinTeam2Button");
+            startTeamLobbyButton ??= FindChild<Button>("StartTeamLobbyButton");
+            refreshTeamLobbyButton ??= FindChild<Button>("RefreshTeamLobbyButton");
+            leaveTeamLobbyButton ??= FindChild<Button>("LeaveTeamLobbyButton");
             friendsView ??= FindObjectOfType<FriendsView>(true);
             mainActionsPanel ??= FindChild<Transform>("MainActionsPanel")?.gameObject;
             modePanel ??= FindChild<Transform>("ModePanel")?.gameObject;
             gamePanel ??= FindChild<Transform>("GamePanel")?.gameObject;
+            teamLobbyPanel ??= FindChild<Transform>("TeamLobbyPanel")?.gameObject;
 
             if (friendsPanel == null && friendsView != null)
             {
@@ -395,11 +750,22 @@ namespace QuixoUnity.UI
             Bind(gameBackButton, ShowModeChoice);
             Bind(quixoOnlineButton, StartOnlineQuixo);
             Bind(qometOnlineButton, StartOnlineQomet);
+            Bind(quixoTeamOnlineButton, StartOnlineQuixoTeam);
             Bind(cancelOnlineButton, CancelOnlineSearch);
             Bind(friendsButton, ToggleFriends);
             Bind(themeButton, CycleTheme);
             Bind(logoutButton, Logout);
             Bind(quitButton, Quit);
+            Bind(timerUnlimitedButton, SelectTimerUnlimited);
+            Bind(timer15Button, SelectTimer15);
+            Bind(timer30Button, SelectTimer30);
+            Bind(timer60Button, SelectTimer60);
+            Bind(createTeamLobbyButton, CreateTeamLobby);
+            Bind(joinTeam1Button, JoinTeam1Lobby);
+            Bind(joinTeam2Button, JoinTeam2Lobby);
+            Bind(startTeamLobbyButton, StartTeamLobby);
+            Bind(refreshTeamLobbyButton, RefreshTeamLobby);
+            Bind(leaveTeamLobbyButton, LeaveTeamLobby);
         }
 
         private void RefreshSessionDisplay()
@@ -432,32 +798,36 @@ namespace QuixoUnity.UI
                 statusLabel.color = palette.UiMuted;
             }
 
-            ApplyButton(quixoButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(qometButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(playButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(localButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(onlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(modeBackButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(gameBackButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(quixoOnlineButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(qometOnlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(cancelOnlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(friendsButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(themeButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(logoutButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(quitButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplySceneTextPalette(palette);
-            RefreshThemeLabel();
-            SetOnlineSearching(_searchingOnline);
-        }
+            VisualThemeCatalog.ApplySceneTextPalette(palette);
 
-        private static void ApplySceneTextPalette(GameplayPalette palette)
-        {
-            foreach (var label in FindObjectsOfType<TextMeshProUGUI>(true))
-            {
-                bool muted = label.name.Contains("Subtitle") || label.name.Contains("Status") || label.name.Contains("Placeholder");
-                label.color = muted ? palette.UiMuted : palette.UiText;
-            }
+            ApplyButton(quixoButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(qometButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(playButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(localButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(onlineButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(modeBackButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(gameBackButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(quixoOnlineButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(qometOnlineButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(quixoTeamOnlineButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(cancelOnlineButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(friendsButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(themeButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(logoutButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(quitButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(timerUnlimitedButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(timer15Button, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(timer30Button, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(timer60Button, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(createTeamLobbyButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(joinTeam1Button, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(joinTeam2Button, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(startTeamLobbyButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(refreshTeamLobbyButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(leaveTeamLobbyButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            RefreshThemeLabel();
+            RefreshTimerSelection();
+            SetOnlineSearching(_searchingOnline);
         }
 
         private void RefreshThemeLabel()
@@ -489,6 +859,7 @@ namespace QuixoUnity.UI
             SetInteractable(qometButton, !searching);
             SetInteractable(quixoOnlineButton, !searching && online);
             SetInteractable(qometOnlineButton, !searching && online);
+            SetInteractable(quixoTeamOnlineButton, !searching && online);
             SetInteractable(friendsButton, !searching && online);
             if (friendsButton != null)
             {
@@ -504,11 +875,18 @@ namespace QuixoUnity.UI
             }
         }
 
-        private void SetPanelState(bool main, bool mode, bool game)
+        private void SetTeamLobbyBusy(bool busy)
+        {
+            _teamLobbyBusy = busy;
+            RenderTeamLobby();
+        }
+
+        private void SetPanelState(bool main, bool mode, bool game, bool teamLobby = false)
         {
             if (mainActionsPanel != null) mainActionsPanel.SetActive(main);
             if (modePanel != null) modePanel.SetActive(mode);
             if (gamePanel != null) gamePanel.SetActive(game);
+            if (teamLobbyPanel != null) teamLobbyPanel.SetActive(teamLobby);
         }
 
         private static void Bind(Button button, UnityEngine.Events.UnityAction action)
@@ -564,7 +942,8 @@ namespace QuixoUnity.UI
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)
             {
-                label.color = textColor;
+                Color background = button.interactable ? normalColor : disabledColor;
+                label.color = VisualThemeCatalog.GetButtonTextColor(background, VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme));
             }
         }
 

@@ -70,12 +70,23 @@ preparation.
 
 - Cliquer sur `Inscription` dans l'ecran d'authentification.
 - Saisir un email, un username et un mot de passe.
-- Valider et ouvrir le mail recu pour confirmer l'adresse.
-- Revenir dans le jeu et se connecter avec l'email ou le username.
+- Valider le compte.
+- Se connecter avec l'email ou le username.
 - En cas d'oubli, utiliser `Mot de passe oublie` depuis l'ecran de connexion.
 
-Tant que l'email n'est pas confirme, la connexion est refusee proprement avec
-un message explicite.
+Le projet utilise Supabase Auth. Unity ne configure jamais de SMTP : pour eviter
+les limites email du provider Supabase par defaut, un SMTP custom (ex. Brevo)
+peut etre configure uniquement dans le tableau de bord Supabase. La confirmation
+email peut alors etre activee ; les emails peuvent mettre quelques minutes a
+arriver (verifier aussi Spam/Promotions).
+
+Apres confirmation, Supabase doit rediriger vers
+`https://bouzekrimohamed.github.io/quixocomet/email-confirmed/` (pas la racine
+`/#access_token`). Verifier les Redirect URLs Supabase et reinscrire un compte
+test si un ancien email avait ete genere sans `redirect_to`.
+
+Pour la demo, la confirmation email peut rester desactivee dans Supabase afin
+d'eviter les blocages pendant les tests sans SMTP custom.
 
 ## Jouer en local
 
@@ -91,6 +102,18 @@ meme jeu.
 L'autre solution est de passer par `Amis` et d'inviter directement un joueur
 deja accepte.
 
+## Quixo equipe 2v2
+
+Le mode 2v2 est disponible pour Quixo en ligne via lobby. Un joueur cree un
+lobby, partage le code, puis les trois autres joueurs rejoignent l'equipe 1
+ou l'equipe 2. La partie ne demarre que quand il y a exactement deux joueurs
+par equipe.
+
+Les deux joueurs d'une meme equipe jouent la meme marque : equipe 1 = X,
+equipe 2 = O. L'ordre des tours est fixe : equipe 1 joueur 1, equipe 2 joueur
+1, equipe 1 joueur 2, equipe 2 joueur 2, puis on recommence. Le matchmaking
+aleatoire 2v2 n'est pas encore ajoute dans cette V1.
+
 ## Amis
 
 Le panneau `Amis` permet de rechercher un username, envoyer une demande,
@@ -102,7 +125,7 @@ de partie en Quixo ou en Qomet.
 
 - Unity : moteur du jeu, gere les scenes, le rendu et l'interface.
 - C# : langage utilise pour tout le code Unity, regles et reseau.
-- Supabase Auth : gere les comptes, les sessions et la confirmation email.
+- Supabase Auth : gere les comptes, les sessions et le reset password.
 - Supabase PostgreSQL : stocke les profils, les amis, les invitations et les coups en ligne.
 - Supabase REST : API utilisee depuis Unity pour communiquer avec la base.
 - GitHub Pages : heberge la page de telechargement, la page email confirme et la page de reset.
@@ -112,7 +135,7 @@ de partie en Quixo ou en Qomet.
 - Les builds Windows et Linux ne sont pas signes.
 - La version macOS n'est pas encore disponible.
 - L'online V1 est principalement client-authoritative et utilise du polling REST plutot que Supabase Realtime.
-- Pas encore de classement, de timer de tour, ni de reconnexion automatique a une partie en cours.
+- Pas encore de classement, de matchmaking aleatoire 2v2, ni de reconnexion automatique a une partie en cours.
 
 ## Ouvrir le projet Unity
 

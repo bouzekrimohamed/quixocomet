@@ -13,30 +13,43 @@ namespace QuixoUnity.UI
     public sealed class MenuVisualAnimator : MonoBehaviour
     {
         [Header("Drift")]
-        [SerializeField] private float starDriftRadius = 8f;
-        [SerializeField] private float starDriftSpeed = 0.45f;
-        [SerializeField] private float tokenDriftRadius = 14f;
-        [SerializeField] private float tokenDriftSpeed = 0.30f;
-        [SerializeField] private float ghostDriftRadius = 18f;
-        [SerializeField] private float ghostDriftSpeed = 0.18f;
+        // Amplitudes legerement augmentees pour rendre le fond plus vivant sans devenir
+        // distrayant. Les vitesses different de quelques % pour casser la sensation de
+        // mouvement synchronise.
+        [SerializeField] private float starDriftRadius = 11f;
+        [SerializeField] private float starDriftSpeed = 0.52f;
+        [SerializeField] private float tokenDriftRadius = 18f;
+        [SerializeField] private float tokenDriftSpeed = 0.34f;
+        [SerializeField] private float ghostDriftRadius = 24f;
+        [SerializeField] private float ghostDriftSpeed = 0.21f;
 
         [Header("Alpha pulse")]
-        [SerializeField] private float starPulseSpeed = 0.6f;
-        [SerializeField] private float starPulseAmplitude = 0.25f;
-        [SerializeField] private float ghostPulseSpeed = 0.35f;
-        [SerializeField] private float ghostPulseAmplitude = 0.35f;
+        [SerializeField] private float starPulseSpeed = 0.7f;
+        [SerializeField] private float starPulseAmplitude = 0.32f;
+        [SerializeField] private float ghostPulseSpeed = 0.42f;
+        [SerializeField] private float ghostPulseAmplitude = 0.42f;
+
+        [Header("Ghost rotation")]
+        // Legere oscillation de rotation (en degres) pour ajouter une 4eme dimension
+        // de mouvement. Reste sub-perceptible donc lisible.
+        [SerializeField] private float ghostRotationAmplitude = 3.2f;
+        [SerializeField] private float ghostRotationSpeed = 0.27f;
+
+        [Header("Token rotation")]
+        [SerializeField] private float tokenRotationAmplitude = 4.5f;
+        [SerializeField] private float tokenRotationSpeed = 0.36f;
 
         [Header("Panel entrance")]
-        [SerializeField] private float entranceDuration = 0.55f;
-        [SerializeField] private float entranceSlide = 26f;
+        [SerializeField] private float entranceDuration = 0.62f;
+        [SerializeField] private float entranceSlide = 32f;
 
         [Header("Title pulse")]
-        [SerializeField] private float titlePulseSpeed = 1.1f;
-        [SerializeField] private float titlePulseAmplitude = 0.025f;
+        [SerializeField] private float titlePulseSpeed = 1.15f;
+        [SerializeField] private float titlePulseAmplitude = 0.030f;
 
         [Header("Online button pulse")]
-        [SerializeField] private float onlinePulseSpeed = 1.4f;
-        [SerializeField] private float onlinePulseAmplitude = 0.04f;
+        [SerializeField] private float onlinePulseSpeed = 1.5f;
+        [SerializeField] private float onlinePulseAmplitude = 0.05f;
 
         private struct DriftItem
         {
@@ -50,6 +63,10 @@ namespace QuixoUnity.UI
             public float Speed;
             public float PulseSpeed;
             public float PulseAmplitude;
+            // Oscillation de rotation en degres. 0 = pas de rotation.
+            public float RotationAmplitude;
+            public float RotationSpeed;
+            public float BaseZRotation;
         }
 
         private readonly List<DriftItem> _stars = new();
@@ -107,24 +124,24 @@ namespace QuixoUnity.UI
 
                 if (n.StartsWith("Star_"))
                 {
-                    AddDriftItem(_stars, rect, starDriftRadius, starDriftSpeed, starPulseSpeed, starPulseAmplitude);
+                    AddDriftItem(_stars, rect, starDriftRadius, starDriftSpeed, starPulseSpeed, starPulseAmplitude, 0f, 0f);
                 }
                 else if (n.StartsWith("MenuToken_") || n.StartsWith("AuthToken_"))
                 {
-                    AddDriftItem(_tokens, rect, tokenDriftRadius, tokenDriftSpeed, 0f, 0f);
+                    AddDriftItem(_tokens, rect, tokenDriftRadius, tokenDriftSpeed, 0f, 0f, tokenRotationAmplitude, tokenRotationSpeed);
                 }
                 else if (n == "MenuGhostX" || n == "MenuGhostO" || n == "AuthGhostX" || n == "AuthGhostO")
                 {
-                    AddDriftItem(_ghosts, rect, ghostDriftRadius, ghostDriftSpeed, ghostPulseSpeed, ghostPulseAmplitude);
+                    AddDriftItem(_ghosts, rect, ghostDriftRadius, ghostDriftSpeed, ghostPulseSpeed, ghostPulseAmplitude, ghostRotationAmplitude, ghostRotationSpeed);
                 }
                 else if (n.StartsWith("MenuSoftBand") || n.StartsWith("AuthSoftBand"))
                 {
-                    AddDriftItem(_bands, rect, tokenDriftRadius * 0.6f, tokenDriftSpeed * 0.6f, 0f, 0f);
+                    AddDriftItem(_bands, rect, tokenDriftRadius * 0.6f, tokenDriftSpeed * 0.6f, 0f, 0f, 0f, 0f);
                 }
             }
         }
 
-        private void AddDriftItem(List<DriftItem> bucket, RectTransform rect, float radius, float speed, float pulseSpeed, float pulseAmplitude)
+        private void AddDriftItem(List<DriftItem> bucket, RectTransform rect, float radius, float speed, float pulseSpeed, float pulseAmplitude, float rotationAmplitude, float rotationSpeed)
         {
             Graphic g = rect.GetComponent<Graphic>();
             float baseAlpha = g != null ? g.color.a : 1f;
@@ -144,7 +161,10 @@ namespace QuixoUnity.UI
                 Radius = radius,
                 Speed = speed,
                 PulseSpeed = pulseSpeed,
-                PulseAmplitude = pulseAmplitude
+                PulseAmplitude = pulseAmplitude,
+                RotationAmplitude = rotationAmplitude,
+                RotationSpeed = rotationSpeed,
+                BaseZRotation = rect.localEulerAngles.z
             });
         }
 
@@ -172,6 +192,14 @@ namespace QuixoUnity.UI
                         c.a = alpha;
                         item.Graphic.color = c;
                     }
+                }
+
+                if (item.RotationAmplitude > 0f)
+                {
+                    float angle = item.BaseZRotation + Mathf.Sin(t * item.RotationSpeed + item.PhaseX) * item.RotationAmplitude;
+                    var euler = item.Rect.localEulerAngles;
+                    euler.z = angle;
+                    item.Rect.localEulerAngles = euler;
                 }
             }
         }

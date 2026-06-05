@@ -1,5 +1,7 @@
 using System;
+using TMPro;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace QuixoUnity.UI
 {
@@ -33,6 +35,7 @@ namespace QuixoUnity.UI
         public readonly Color UiButtonDisabled;
         public readonly Color UiText;
         public readonly Color UiMuted;
+        public readonly Color UiButtonText;
         public readonly Color KeyLight;
         public readonly float CameraSize;
         public readonly float BoardScale;
@@ -57,6 +60,7 @@ namespace QuixoUnity.UI
             Color uiButtonDisabled,
             Color uiText,
             Color uiMuted,
+            Color uiButtonText,
             Color keyLight,
             float cameraSize,
             float boardScale,
@@ -80,6 +84,7 @@ namespace QuixoUnity.UI
             UiButtonDisabled = uiButtonDisabled;
             UiText = uiText;
             UiMuted = uiMuted;
+            UiButtonText = uiButtonText;
             KeyLight = keyLight;
             CameraSize = cameraSize;
             BoardScale = boardScale;
@@ -138,6 +143,41 @@ namespace QuixoUnity.UI
             };
         }
 
+        public static Color GetReadableTextColor(Color background)
+        {
+            float luminance = 0.2126f * background.r + 0.7152f * background.g + 0.0722f * background.b;
+            return luminance < 0.45f
+                ? new Color(0.98f, 0.96f, 0.92f, 1f)
+                : new Color(0.08f, 0.07f, 0.06f, 1f);
+        }
+
+        public static Color GetButtonTextColor(Color buttonBackground, GameplayPalette palette)
+        {
+            return GetReadableTextColor(buttonBackground);
+        }
+
+        public static bool IsButtonLabel(TextMeshProUGUI label)
+        {
+            return label != null && label.GetComponentInParent<Button>() != null;
+        }
+
+        public static void ApplySceneTextPalette(GameplayPalette palette)
+        {
+            foreach (var label in UnityEngine.Object.FindObjectsOfType<TextMeshProUGUI>(true))
+            {
+                if (IsButtonLabel(label))
+                {
+                    continue;
+                }
+
+                bool muted = label.name.Contains("Subtitle")
+                    || label.name.Contains("Status")
+                    || label.name.Contains("Placeholder")
+                    || label.name.Contains("Message");
+                label.color = muted ? palette.UiMuted : palette.UiText;
+            }
+        }
+
         private static GameplayPalette MarineBlue()
         {
             return new GameplayPalette(
@@ -159,6 +199,7 @@ namespace QuixoUnity.UI
                 new Color(0.10f, 0.15f, 0.21f, 0.44f),
                 new Color(0.98f, 0.92f, 0.78f, 1f),
                 new Color(0.80f, 0.75f, 0.64f, 1f),
+                new Color(0.98f, 0.96f, 0.92f, 1f),
                 new Color(1.00f, 0.88f, 0.62f, 1f),
                 4.9f,
                 1.44f,
@@ -186,6 +227,7 @@ namespace QuixoUnity.UI
                 new Color(0.10f, 0.18f, 0.14f, 0.44f),
                 new Color(0.96f, 0.92f, 0.76f, 1f),
                 new Color(0.76f, 0.73f, 0.61f, 1f),
+                new Color(0.96f, 0.92f, 0.76f, 1f),
                 new Color(1.00f, 0.87f, 0.57f, 1f),
                 4.9f,
                 1.44f,
@@ -213,6 +255,7 @@ namespace QuixoUnity.UI
                 new Color(0.16f, 0.10f, 0.22f, 0.44f),
                 new Color(0.98f, 0.92f, 0.78f, 1f),
                 new Color(0.78f, 0.71f, 0.62f, 1f),
+                new Color(0.98f, 0.92f, 0.78f, 1f),
                 new Color(1.00f, 0.86f, 0.58f, 1f),
                 4.9f,
                 1.44f,
@@ -240,6 +283,7 @@ namespace QuixoUnity.UI
                 new Color(0.40f, 0.31f, 0.23f, 0.32f),
                 new Color(0.18f, 0.10f, 0.05f, 1f),
                 new Color(0.46f, 0.33f, 0.21f, 1f),
+                new Color(0.98f, 0.96f, 0.92f, 1f),
                 new Color(1.00f, 0.90f, 0.66f, 1f),
                 4.85f,
                 1.43f,
@@ -267,6 +311,7 @@ namespace QuixoUnity.UI
                 new Color(0.14f, 0.14f, 0.16f, 0.44f),
                 new Color(0.99f, 0.98f, 0.94f, 1f),
                 new Color(0.84f, 0.82f, 0.76f, 1f),
+                new Color(0.99f, 0.98f, 0.94f, 1f),
                 new Color(1.00f, 0.82f, 0.48f, 1f),
                 4.85f,
                 1.43f,
@@ -294,6 +339,7 @@ namespace QuixoUnity.UI
                 new Color(0.66f, 0.68f, 0.66f, 0.35f),
                 new Color(0.12f, 0.13f, 0.12f, 1f),
                 new Color(0.44f, 0.45f, 0.43f, 1f),
+                new Color(0.98f, 0.96f, 0.92f, 1f),
                 new Color(1.00f, 0.90f, 0.62f, 1f),
                 4.85f,
                 1.43f,

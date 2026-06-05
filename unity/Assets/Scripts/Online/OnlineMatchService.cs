@@ -154,6 +154,8 @@ namespace QuixoUnity.Online
             OnlineMovePayload payload,
             string nextTurnId,
             string winnerId,
+            string winnerTeam,
+            int currentTurnIndex,
             Action<OnlineOperationResult> onComplete)
         {
             if (!EnsureOnline(onComplete))
@@ -167,7 +169,7 @@ namespace QuixoUnity.Online
                 return;
             }
 
-            StartCoroutine(SubmitMoveRoutine(match, payload, nextTurnId, winnerId, onComplete));
+            StartCoroutine(SubmitMoveRoutine(match, payload, nextTurnId, winnerId, winnerTeam, currentTurnIndex, onComplete));
         }
 
         public void UpdateMatchFinished(OnlineMatchDto match, string winnerId, Action<OnlineOperationResult> onComplete)
@@ -177,7 +179,73 @@ namespace QuixoUnity.Online
                 return;
             }
 
-            StartCoroutine(PatchMatchRoutine(match.id, match.current_turn_id, "finished", winnerId, onComplete));
+            StartCoroutine(PatchMatchRoutine(match.id, match.current_turn_id, "finished", winnerId, null, match.current_turn_index, onComplete));
+        }
+
+        public void UpdateTeamMatchFinished(OnlineMatchDto match, TeamId winnerTeam, Action<OnlineOperationResult> onComplete)
+        {
+            if (!EnsureOnline(onComplete) || match == null)
+            {
+                return;
+            }
+
+            StartCoroutine(PatchMatchRoutine(match.id, match.current_turn_id, "finished", string.Empty, OnlineSessionTransit.TeamName(winnerTeam), match.current_turn_index, onComplete));
+        }
+
+        public void CreateTeamLobby(Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
+            {
+                return;
+            }
+
+            StartCoroutine(CreateTeamLobbyRoutine(onComplete));
+        }
+
+        public void JoinTeamLobby(string lobbyCode, TeamId team, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
+            {
+                return;
+            }
+
+            if (team == TeamId.None)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Equipe invalide."));
+                return;
+            }
+
+            StartCoroutine(JoinTeamLobbyRoutine(lobbyCode, team, onComplete));
+        }
+
+        public void FetchTeamLobby(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
+            {
+                return;
+            }
+
+            StartCoroutine(FetchTeamLobbyByIdRoutine(lobbyId, onComplete));
+        }
+
+        public void LeaveTeamLobby(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
+            {
+                return;
+            }
+
+            StartCoroutine(LeaveTeamLobbyRoutine(lobbyId, onComplete));
+        }
+
+        public void StartTeamLobby(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (!EnsureOnline(result => onComplete?.Invoke(TeamLobbyOperationResult.Fail(result.Message))))
+            {
+                return;
+            }
+
+            StartCoroutine(StartTeamLobbyRoutine(lobbyId, onComplete));
         }
 
         private IEnumerator SendInviteRoutine(string friendUserId, GameKind kind, Action<OnlineOperationResult> onComplete)
@@ -282,6 +350,374 @@ namespace QuixoUnity.Online
                 onComplete?.Invoke(IsSuccess(request)
                     ? OnlineOperationResult.Ok("Invitation mise a jour.")
                     : OnlineOperationResult.Fail(ParseError(request, "Mise a jour invitation impossible.")));
+            }
+        }
+
+        private IEnumerator CreateTeamLobbyRoutine(Action<TeamLobbyOperationResult> onComplete)
+        {
+            string code = GenerateLobbyCode();
+            string json = "{"
+                + "\"lobby_code\":\"" + EscapeJson(code) + "\","
+                + "\"game_kind\":\"Quixo\","
+                + "\"match_mode\":\"Team2v2\","
+                + "\"host_user_id\":\"" + EscapeJson(SessionManager.UserId) + "\","
+                + "\"status\":\"lobby\","
+                + "\"updated_at\":\"" + DateTime.UtcNow.ToString("o") + "\""
+                + "}";
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobbies";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", json);
+                    created.SetRequestHeader("Prefer", "return=representation");
+                    return created;
+                },
+                completed => request = completed);
+            TeamLobbyDto lobby = null;
+            using (request)
+            {
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(TeamLobbyOperationResult.Fail(ParseError(request, "Creation du lobby 2v2 impossible. Verifiez le SQL Supabase.")));
+                    yield break;
+                }
+
+                var rows = SupabaseJson.FromArray<TeamLobbyDto>(request.downloadHandler.text);
+                lobby = rows.Count > 0 ? rows[0] : null;
+            }
+
+            if (lobby == null || string.IsNullOrWhiteSpace(lobby.id))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Lobby 2v2 introuvable apres creation."));
+                yield break;
+            }
+
+            bool inserted = false;
+            yield return InsertLobbyPlayerRoutine(lobby.id, TeamId.Team1, 0, ok => inserted = ok);
+            if (!inserted)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Lobby cree, mais ajout du host impossible."));
+                yield break;
+            }
+
+            TeamLobbyOperationResult snapshotResult = null;
+            yield return FetchTeamLobbyByIdRoutine(lobby.id, result => snapshotResult = result);
+            onComplete?.Invoke(snapshotResult != null && snapshotResult.Success
+                ? TeamLobbyOperationResult.Ok($"Lobby cree. Code : {lobby.lobby_code}", snapshotResult.Snapshot)
+                : TeamLobbyOperationResult.Fail("Lobby cree, mais rafraichissement impossible."));
+        }
+
+        private IEnumerator JoinTeamLobbyRoutine(string lobbyCode, TeamId team, Action<TeamLobbyOperationResult> onComplete)
+        {
+            string code = NormalizeLobbyCode(lobbyCode);
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Entrez un code lobby."));
+                yield break;
+            }
+
+            TeamLobbyOperationResult fetch = null;
+            yield return FetchTeamLobbyByCodeRoutine(code, result => fetch = result);
+            if (fetch == null || !fetch.Success || fetch.Snapshot?.Lobby == null)
+            {
+                onComplete?.Invoke(fetch ?? TeamLobbyOperationResult.Fail("Lobby introuvable."));
+                yield break;
+            }
+
+            var snapshot = fetch.Snapshot;
+            if (!string.Equals(snapshot.Lobby.status, "lobby", StringComparison.OrdinalIgnoreCase))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Ce lobby est deja lance ou ferme."));
+                yield break;
+            }
+
+            if (snapshot.HasUser(SessionManager.UserId))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Ok("Vous etes deja dans ce lobby.", snapshot));
+                yield break;
+            }
+
+            if (snapshot.CountTeam(team) >= 2)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Cette equipe est deja complete."));
+                yield break;
+            }
+
+            int slotIndex = snapshot.GetPlayer(team, 0) == null ? 0 : 1;
+            bool inserted = false;
+            yield return InsertLobbyPlayerRoutine(snapshot.Lobby.id, team, slotIndex, ok => inserted = ok);
+            if (!inserted)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Impossible de rejoindre ce slot. Rafraichissez le lobby."));
+                yield break;
+            }
+
+            TeamLobbyOperationResult refreshed = null;
+            yield return FetchTeamLobbyByIdRoutine(snapshot.Lobby.id, result => refreshed = result);
+            onComplete?.Invoke(refreshed != null && refreshed.Success
+                ? TeamLobbyOperationResult.Ok($"Lobby rejoint en {OnlineSessionTransit.TeamName(team)}.", refreshed.Snapshot)
+                : TeamLobbyOperationResult.Fail("Lobby rejoint, mais rafraichissement impossible."));
+        }
+
+        private IEnumerator LeaveTeamLobbyRoutine(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (string.IsNullOrWhiteSpace(lobbyId))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Ok("Lobby ferme."));
+                yield break;
+            }
+
+            TeamLobbyOperationResult fetch = null;
+            yield return FetchTeamLobbyByIdRoutine(lobbyId, result => fetch = result);
+            var lobby = fetch?.Snapshot?.Lobby;
+            if (lobby != null && lobby.host_user_id == SessionManager.UserId && string.Equals(lobby.status, "lobby", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return PatchLobbyRoutine(lobby.id, "cancelled", null, _ => { });
+                onComplete?.Invoke(TeamLobbyOperationResult.Ok("Lobby annule."));
+                yield break;
+            }
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobby_players?lobby_id=eq.{Escape(lobbyId)}&user_id=eq.{Escape(SessionManager.UserId)}";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "DELETE", null);
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            request?.Dispose();
+            onComplete?.Invoke(TeamLobbyOperationResult.Ok("Lobby quitte."));
+        }
+
+        private IEnumerator StartTeamLobbyRoutine(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
+        {
+            TeamLobbyOperationResult fetch = null;
+            yield return FetchTeamLobbyByIdRoutine(lobbyId, result => fetch = result);
+            var snapshot = fetch?.Snapshot;
+            if (snapshot?.Lobby == null)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Lobby introuvable."));
+                yield break;
+            }
+
+            if (snapshot.Lobby.host_user_id != SessionManager.UserId)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Seul le host peut demarrer la partie."));
+                yield break;
+            }
+
+            if (!string.Equals(snapshot.Lobby.status, "lobby", StringComparison.OrdinalIgnoreCase))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Ce lobby n'est plus en attente."));
+                yield break;
+            }
+
+            if (!snapshot.IsFull || !HasFourDistinctPlayers(snapshot))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Il faut exactement 4 joueurs differents : 2 par equipe."));
+                yield break;
+            }
+
+            OnlineMatchDto match = null;
+            yield return CreateTeamMatchRoutine(snapshot, created => match = created);
+            if (match == null)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Creation du match 2v2 impossible."));
+                yield break;
+            }
+
+            bool patched = false;
+            yield return PatchLobbyRoutine(snapshot.Lobby.id, "started", match.id, ok => patched = ok);
+            if (!patched)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Match cree, mais lobby non marque comme demarre."));
+                yield break;
+            }
+
+            TeamLobbyOperationResult refreshed = null;
+            yield return FetchTeamLobbyByIdRoutine(snapshot.Lobby.id, result => refreshed = result);
+            if (refreshed?.Snapshot != null)
+            {
+                refreshed.Snapshot.Match = match;
+            }
+
+            onComplete?.Invoke(refreshed != null && refreshed.Success
+                ? TeamLobbyOperationResult.Ok("Partie 2v2 lancee.", refreshed.Snapshot)
+                : TeamLobbyOperationResult.Ok("Partie 2v2 lancee.", new TeamLobbySnapshot { Lobby = snapshot.Lobby, Players = snapshot.Players, Match = match }));
+        }
+
+        private IEnumerator FetchTeamLobbyByCodeRoutine(string lobbyCode, Action<TeamLobbyOperationResult> onComplete)
+        {
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobbies?lobby_code=eq.{Escape(lobbyCode)}&status=in.(lobby,started)&select=id,lobby_code,game_kind,match_mode,host_user_id,status,match_id,created_at,updated_at&order=created_at.desc&limit=1";
+            yield return FetchTeamLobbyRoutine(url, onComplete);
+        }
+
+        private IEnumerator FetchTeamLobbyByIdRoutine(string lobbyId, Action<TeamLobbyOperationResult> onComplete)
+        {
+            if (string.IsNullOrWhiteSpace(lobbyId))
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Lobby invalide."));
+                yield break;
+            }
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobbies?id=eq.{Escape(lobbyId)}&select=id,lobby_code,game_kind,match_mode,host_user_id,status,match_id,created_at,updated_at&limit=1";
+            yield return FetchTeamLobbyRoutine(url, onComplete);
+        }
+
+        private IEnumerator FetchTeamLobbyRoutine(string lobbyUrl, Action<TeamLobbyOperationResult> onComplete)
+        {
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(lobbyUrl, "GET", null),
+                completed => request = completed);
+            TeamLobbyDto lobby = null;
+            using (request)
+            {
+                if (!IsSuccess(request))
+                {
+                    onComplete?.Invoke(TeamLobbyOperationResult.Fail(ParseError(request, "Lobby 2v2 introuvable. Verifiez le SQL Supabase.")));
+                    yield break;
+                }
+
+                var rows = SupabaseJson.FromArray<TeamLobbyDto>(request.downloadHandler.text);
+                lobby = rows.Count > 0 ? rows[0] : null;
+            }
+
+            if (lobby == null)
+            {
+                onComplete?.Invoke(TeamLobbyOperationResult.Fail("Lobby introuvable."));
+                yield break;
+            }
+
+            var snapshot = new TeamLobbySnapshot { Lobby = lobby };
+            List<TeamLobbyPlayerDto> players = null;
+            yield return FetchLobbyPlayersRoutine(lobby.id, fetched => players = fetched);
+            snapshot.Players = players ?? new List<TeamLobbyPlayerDto>();
+
+            if (!string.IsNullOrWhiteSpace(lobby.match_id))
+            {
+                OnlineOperationResult matchResult = null;
+                yield return FetchMatchRoutine(lobby.match_id, result => matchResult = result);
+                if (matchResult != null && matchResult.Success)
+                {
+                    snapshot.Match = matchResult.Match;
+                }
+            }
+
+            onComplete?.Invoke(TeamLobbyOperationResult.Ok("Lobby charge.", snapshot));
+        }
+
+        private IEnumerator FetchLobbyPlayersRoutine(string lobbyId, Action<List<TeamLobbyPlayerDto>> onComplete)
+        {
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobby_players?lobby_id=eq.{Escape(lobbyId)}&select=id,lobby_id,user_id,username,team_id,slot_index,joined_at,updated_at&order=team_id.asc,slot_index.asc";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(url, "GET", null),
+                completed => request = completed);
+            using (request)
+            {
+                onComplete?.Invoke(IsSuccess(request) ? SupabaseJson.FromArray<TeamLobbyPlayerDto>(request.downloadHandler.text) : new List<TeamLobbyPlayerDto>());
+            }
+        }
+
+        private IEnumerator InsertLobbyPlayerRoutine(string lobbyId, TeamId team, int slotIndex, Action<bool> onComplete)
+        {
+            string username = string.IsNullOrWhiteSpace(SessionManager.Username) ? ShortId(SessionManager.UserId) : SessionManager.Username;
+            string json = "{"
+                + "\"lobby_id\":\"" + EscapeJson(lobbyId) + "\","
+                + "\"user_id\":\"" + EscapeJson(SessionManager.UserId) + "\","
+                + "\"username\":\"" + EscapeJson(username) + "\","
+                + "\"team_id\":\"" + EscapeJson(OnlineSessionTransit.TeamName(team)) + "\","
+                + "\"slot_index\":" + slotIndex + ","
+                + "\"updated_at\":\"" + DateTime.UtcNow.ToString("o") + "\""
+                + "}";
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobby_players";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", json);
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            using (request)
+            {
+                onComplete?.Invoke(IsSuccess(request));
+            }
+        }
+
+        private IEnumerator PatchLobbyRoutine(string lobbyId, string status, string matchId, Action<bool> onComplete)
+        {
+            string json = "{\"status\":\"" + EscapeJson(status) + "\",\"updated_at\":\"" + DateTime.UtcNow.ToString("o") + "\"";
+            if (!string.IsNullOrWhiteSpace(matchId))
+            {
+                json += ",\"match_id\":\"" + EscapeJson(matchId) + "\"";
+            }
+
+            json += "}";
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_lobbies?id=eq.{Escape(lobbyId)}";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "PATCH", json);
+                    created.SetRequestHeader("Prefer", "return=minimal");
+                    return created;
+                },
+                completed => request = completed);
+            using (request)
+            {
+                onComplete?.Invoke(IsSuccess(request));
+            }
+        }
+
+        private IEnumerator CreateTeamMatchRoutine(TeamLobbySnapshot snapshot, Action<OnlineMatchDto> onComplete)
+        {
+            var team1Player1 = snapshot.GetPlayer(TeamId.Team1, 0);
+            var team1Player2 = snapshot.GetPlayer(TeamId.Team1, 1);
+            var team2Player1 = snapshot.GetPlayer(TeamId.Team2, 0);
+            var team2Player2 = snapshot.GetPlayer(TeamId.Team2, 1);
+            if (team1Player1 == null || team1Player2 == null || team2Player1 == null || team2Player2 == null)
+            {
+                onComplete?.Invoke(null);
+                yield break;
+            }
+
+            string json = "{"
+                + "\"game_kind\":\"Quixo\","
+                + "\"match_mode\":\"Team2v2\","
+                + "\"player1_id\":\"" + EscapeJson(team1Player1.user_id) + "\","
+                + "\"player2_id\":\"" + EscapeJson(team2Player1.user_id) + "\","
+                + "\"team1_player1_id\":\"" + EscapeJson(team1Player1.user_id) + "\","
+                + "\"team1_player2_id\":\"" + EscapeJson(team1Player2.user_id) + "\","
+                + "\"team2_player1_id\":\"" + EscapeJson(team2Player1.user_id) + "\","
+                + "\"team2_player2_id\":\"" + EscapeJson(team2Player2.user_id) + "\","
+                + "\"current_turn_id\":\"" + EscapeJson(team1Player1.user_id) + "\","
+                + "\"current_turn_index\":0,"
+                + "\"status\":\"active\","
+                + "\"updated_at\":\"" + DateTime.UtcNow.ToString("o") + "\""
+                + "}";
+
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_matches";
+            UnityWebRequest request = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () =>
+                {
+                    var created = CreateJsonRequest(url, "POST", json);
+                    created.SetRequestHeader("Prefer", "return=representation");
+                    return created;
+                },
+                completed => request = completed);
+            using (request)
+            {
+                var rows = IsSuccess(request) ? SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text) : new List<OnlineMatchDto>();
+                onComplete?.Invoke(rows.Count > 0 ? rows[0] : null);
             }
         }
 
@@ -720,7 +1156,9 @@ namespace QuixoUnity.Online
 
         private IEnumerator FetchMatchRoutine(string matchId, Action<OnlineOperationResult> onComplete)
         {
-            string url = $"{SupabaseSettings.Url}/rest/v1/online_matches?id=eq.{Escape(matchId)}&select=id,game_kind,player1_id,player2_id,current_turn_id,status,winner_id,created_at,updated_at&limit=1";
+            string extendedSelect = "id,game_kind,match_mode,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id,current_turn_id,current_turn_index,status,winner_id,winner_team,created_at,updated_at";
+            string legacySelect = "id,game_kind,player1_id,player2_id,current_turn_id,status,winner_id,created_at,updated_at";
+            string url = $"{SupabaseSettings.Url}/rest/v1/online_matches?id=eq.{Escape(matchId)}&select={extendedSelect}&limit=1";
             UnityWebRequest request = null;
             yield return SupabaseRequestHelper.SendAuthorizedRequest(
                 () => CreateJsonRequest(url, "GET", null),
@@ -729,11 +1167,39 @@ namespace QuixoUnity.Online
             {
                 if (!IsSuccess(request))
                 {
-                    onComplete?.Invoke(OnlineOperationResult.Fail(ParseError(request, "Match introuvable.")));
+                    string body = request.downloadHandler != null ? request.downloadHandler.text : string.Empty;
+                    if (!body.ToLowerInvariant().Contains("match_mode")
+                        && !body.ToLowerInvariant().Contains("team1_player1_id")
+                        && !body.ToLowerInvariant().Contains("current_turn_index"))
+                    {
+                        onComplete?.Invoke(OnlineOperationResult.Fail(ParseError(request, "Match introuvable.")));
+                        yield break;
+                    }
+                }
+                else
+                {
+                    var rows = SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text);
+                    onComplete?.Invoke(rows.Count > 0
+                        ? OnlineOperationResult.Ok("Match charge.", rows[0])
+                        : OnlineOperationResult.Fail("Match introuvable."));
+                    yield break;
+                }
+            }
+
+            string fallbackUrl = $"{SupabaseSettings.Url}/rest/v1/online_matches?id=eq.{Escape(matchId)}&select={legacySelect}&limit=1";
+            UnityWebRequest fallbackRequest = null;
+            yield return SupabaseRequestHelper.SendAuthorizedRequest(
+                () => CreateJsonRequest(fallbackUrl, "GET", null),
+                completed => fallbackRequest = completed);
+            using (fallbackRequest)
+            {
+                if (!IsSuccess(fallbackRequest))
+                {
+                    onComplete?.Invoke(OnlineOperationResult.Fail(ParseError(fallbackRequest, "Match introuvable.")));
                     yield break;
                 }
 
-                var rows = SupabaseJson.FromArray<OnlineMatchDto>(request.downloadHandler.text);
+                var rows = SupabaseJson.FromArray<OnlineMatchDto>(fallbackRequest.downloadHandler.text);
                 onComplete?.Invoke(rows.Count > 0
                     ? OnlineOperationResult.Ok("Match charge.", rows[0])
                     : OnlineOperationResult.Fail("Match introuvable."));
@@ -753,7 +1219,14 @@ namespace QuixoUnity.Online
             }
         }
 
-        private IEnumerator SubmitMoveRoutine(OnlineMatchDto match, OnlineMovePayload payload, string nextTurnId, string winnerId, Action<OnlineOperationResult> onComplete)
+        private IEnumerator SubmitMoveRoutine(
+            OnlineMatchDto match,
+            OnlineMovePayload payload,
+            string nextTurnId,
+            string winnerId,
+            string winnerTeam,
+            int currentTurnIndex,
+            Action<OnlineOperationResult> onComplete)
         {
             int nextMoveNumber = 1;
             yield return FetchLastMoveNumberRoutine(match.id, number => nextMoveNumber = number + 1);
@@ -787,8 +1260,8 @@ namespace QuixoUnity.Online
 
             Debug.Log($"[Online] Sent move #{nextMoveNumber} match={match.id} action={payload.action} dir={payload.direction} from=({payload.fromRow},{payload.fromCol}) to=({payload.toRow},{payload.toCol}) sel=({payload.selectedRow},{payload.selectedCol}) nextTurn={nextTurnId}");
 
-            string status = string.IsNullOrWhiteSpace(winnerId) ? "active" : "finished";
-            yield return PatchMatchRoutine(match.id, nextTurnId, status, winnerId, onComplete);
+            string status = string.IsNullOrWhiteSpace(winnerId) && string.IsNullOrWhiteSpace(winnerTeam) ? "active" : "finished";
+            yield return PatchMatchRoutine(match.id, nextTurnId, status, winnerId, winnerTeam, currentTurnIndex, onComplete);
         }
 
         private IEnumerator FetchLastMoveNumberRoutine(string matchId, Action<int> onComplete)
@@ -805,12 +1278,22 @@ namespace QuixoUnity.Online
             }
         }
 
-        private IEnumerator PatchMatchRoutine(string matchId, string currentTurnId, string status, string winnerId, Action<OnlineOperationResult> onComplete)
+        private IEnumerator PatchMatchRoutine(string matchId, string currentTurnId, string status, string winnerId, string winnerTeam, int currentTurnIndex, Action<OnlineOperationResult> onComplete)
         {
             string json = "{\"current_turn_id\":\"" + EscapeJson(currentTurnId) + "\",\"status\":\"" + EscapeJson(status) + "\",\"updated_at\":\"" + DateTime.UtcNow.ToString("o") + "\"";
             if (!string.IsNullOrWhiteSpace(winnerId))
             {
                 json += ",\"winner_id\":\"" + EscapeJson(winnerId) + "\"";
+            }
+
+            if (!string.IsNullOrWhiteSpace(winnerTeam))
+            {
+                json += ",\"winner_team\":\"" + EscapeJson(winnerTeam) + "\"";
+            }
+
+            if (currentTurnIndex >= 0)
+            {
+                json += ",\"current_turn_index\":" + currentTurnIndex;
             }
 
             json += "}";
@@ -846,6 +1329,54 @@ namespace QuixoUnity.Online
                 StopCoroutine(_matchmakingRoutine);
                 _matchmakingRoutine = null;
             }
+        }
+
+        private static bool HasFourDistinctPlayers(TeamLobbySnapshot snapshot)
+        {
+            if (snapshot == null || snapshot.Players == null || snapshot.Players.Count != 4)
+            {
+                return false;
+            }
+
+            var ids = new HashSet<string>();
+            foreach (var player in snapshot.Players)
+            {
+                if (player == null || string.IsNullOrWhiteSpace(player.user_id))
+                {
+                    return false;
+                }
+
+                if (!ids.Add(player.user_id))
+                {
+                    return false;
+                }
+            }
+
+            return snapshot.GetPlayer(TeamId.Team1, 0) != null
+                && snapshot.GetPlayer(TeamId.Team1, 1) != null
+                && snapshot.GetPlayer(TeamId.Team2, 0) != null
+                && snapshot.GetPlayer(TeamId.Team2, 1) != null;
+        }
+
+        private static string GenerateLobbyCode()
+        {
+            string raw = Guid.NewGuid().ToString("N").Substring(0, 6).ToUpperInvariant();
+            return raw;
+        }
+
+        private static string NormalizeLobbyCode(string code)
+        {
+            return (code ?? string.Empty).Trim().Replace(" ", string.Empty).ToUpperInvariant();
+        }
+
+        private static string ShortId(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return "joueur";
+            }
+
+            return value.Length <= 8 ? value : value.Substring(0, 8);
         }
 
         private static bool EnsureOnline(Action<OnlineOperationResult> onComplete)

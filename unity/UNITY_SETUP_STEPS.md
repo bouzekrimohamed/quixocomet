@@ -62,6 +62,7 @@ Important :
    - `Jouer Qomet local`;
    - `Jouer Quixo en ligne` avec un compte connecte;
    - `Jouer Qomet en ligne` avec un compte connecte;
+   - `Quixo equipe 2v2` avec un lobby et quatre comptes;
    - `Amis`;
    - `Theme`;
    - `Deconnexion`;
@@ -120,7 +121,7 @@ Verification attendue :
 - AuthScene visible;
 - mode hors ligne utilisable;
 - inscription/connexion fonctionnent apres configuration;
-- email non confirme refuse proprement la connexion;
+- confirmation email desactivee pour la demo : connexion possible directement;
 - boutons `Voir` / `Masquer` fonctionnent sur les deux mots de passe;
 - login par username fonctionne apres migration SQL email;
 - reset password ouvre le flux email Supabase;
@@ -128,6 +129,7 @@ Verification attendue :
 - Quixo/Qomet local restent jouables;
 - la popup de fin de partie apparait une seule fois pour Quixo et Qomet;
 - avec deux comptes, presence/invitations/matchmaking online fonctionnent apres migration SQL.
+- avec quatre comptes, `Quixo equipe 2v2` demarre via lobby apres la migration SQL 2v2.
 
 ## 8. Online V1
 
@@ -136,10 +138,12 @@ La V1 online utilise REST/polling Supabase :
 - presence toutes les 10 secondes;
 - invitations entre amis depuis le panneau `Amis`;
 - matchmaking public via `Jouer Quixo en ligne` / `Jouer Qomet en ligne`;
+- lobby Quixo equipe 2v2 via code partage;
 - polling des coups toutes les 1 seconde pendant la partie;
 - bouton `Recommencer` desactive en online, bouton `Menu` pour quitter.
 
 Pour tester online, utiliser deux comptes Supabase differents avec deux instances : Unity + build Windows, ou deux PC.
+Pour tester Quixo equipe 2v2, utiliser quatre comptes Supabase differents.
 
 ## 9. Future V2 online
 
@@ -154,11 +158,13 @@ Ajouter ensuite Supabase Realtime, validation serveur par RPC/Edge Function, rec
 5. Play.
 6. Tester le theme sombre.
 7. Tester voir/cacher le mot de passe.
-8. Tester un email non confirme.
+8. Creer un compte puis se connecter directement sans ouvrir la boite mail.
 9. Tester une victoire Quixo.
 10. Tester une victoire Qomet.
-11. Tester la page download.
-12. Tester la page email-confirmed.
+11. Tester online 1v1.
+12. Tester Quixo 2v2 avec 4 comptes.
+13. Tester la page download.
+14. Tester le reset password.
 # Scenes et builds
 
 Apres modification des scripts ou du Scene Builder :

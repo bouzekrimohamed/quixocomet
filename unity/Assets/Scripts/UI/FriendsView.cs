@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using QuixoUnity.Auth;
 using QuixoUnity.Core;
+using QuixoUnity.Gameplay;
 using QuixoUnity.Online;
 using QuixoUnity.Social;
 using TMPro;
@@ -141,9 +142,6 @@ namespace QuixoUnity.UI
         public void ApplyTheme()
         {
             var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
-            ApplyButton(addButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(refreshButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(closeButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
             if (statusLabel != null)
             {
                 statusLabel.color = palette.UiMuted;
@@ -151,9 +149,18 @@ namespace QuixoUnity.UI
 
             foreach (var label in GetComponentsInChildren<TextMeshProUGUI>(true))
             {
+                if (VisualThemeCatalog.IsButtonLabel(label))
+                {
+                    continue;
+                }
+
                 bool muted = label.name.Contains("Subtitle") || label.name.Contains("Status");
                 label.color = muted ? palette.UiMuted : palette.UiText;
             }
+
+            ApplyButton(addButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(refreshButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(closeButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
         }
 
         private void RenderSummary(FriendSummary summary)
@@ -266,7 +273,7 @@ namespace QuixoUnity.UI
                 var row = CreateRow(invitesContainer, palette);
                 CreateRowDot(row.transform, palette, false, hidden: true);
                 CreateRowLabel(row.transform, $"Invitation acceptee par {ResolveFriendName(invite.to_user_id)}", palette.UiText, palette, flex: true);
-                var join = CreateRowButton(row.transform, "Rejoindre", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+                var join = CreateRowButton(row.transform, "Rejoindre", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
                 join.onClick.AddListener(() => JoinAcceptedInvite(invite));
             }
         }
@@ -284,8 +291,8 @@ namespace QuixoUnity.UI
             string name = string.IsNullOrWhiteSpace(item.Username) ? "(inconnu)" : item.Username;
             CreateRowLabel(row.transform, $"Demande de {name}", palette.UiText, palette, flex: true);
 
-            var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
             accept.onClick.AddListener(() => UpdateRequest(item.RequestId, true));
             reject.onClick.AddListener(() => UpdateRequest(item.RequestId, false));
         }
@@ -304,8 +311,8 @@ namespace QuixoUnity.UI
             string kind = string.IsNullOrWhiteSpace(invite.game_kind) ? "Quixo" : invite.game_kind;
             CreateRowLabel(row.transform, $"{fromName} t'invite a jouer {kind}", palette.UiText, palette, flex: true);
 
-            var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            var accept = CreateRowButton(row.transform, "Accepter", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            var reject = CreateRowButton(row.transform, "Refuser", palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
             accept.onClick.AddListener(() => AcceptMatchInvite(invite));
             reject.onClick.AddListener(() => RejectMatchInvite(invite));
         }
@@ -325,8 +332,8 @@ namespace QuixoUnity.UI
             string label = string.IsNullOrWhiteSpace(name) ? "(ami)" : name;
             CreateRowLabel(row.transform, label, palette.UiText, palette, flex: true);
 
-            var quixo = CreateRowButton(row.transform, "Inviter Quixo", palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            var qomet = CreateRowButton(row.transform, "Inviter Qomet", palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            var quixo = CreateRowButton(row.transform, "Inviter Quixo", palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            var qomet = CreateRowButton(row.transform, "Inviter Qomet", palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
             quixo.interactable = isOnline;
             qomet.interactable = isOnline;
             quixo.onClick.AddListener(() => SendGameInvite(item, GameKind.Quixo));
@@ -409,6 +416,10 @@ namespace QuixoUnity.UI
                 }
 
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.from_user_id));
+                // V1 online ami : le timer choisi cote receveur est utilise par sa propre instance.
+                // Limitation V1 : la duree n'est pas serialisee via Supabase, donc deux clients
+                // peuvent avoir des reglages differents. Documente dans SUPABASE_SETUP.md.
+                OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds;
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
                 if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
@@ -471,6 +482,8 @@ namespace QuixoUnity.UI
 
                 Debug.Log($"[Online] Accepted invite (sender side) {invite.id}, match={result.Match.id}, p1={result.Match.player1_id}, p2={result.Match.player2_id}, turn={result.Match.current_turn_id}");
                 OnlineSessionTransit.Start(result.Match, SessionManager.UserId, ResolveFriendName(invite.to_user_id));
+                // Cote sender (createur de l'invitation) : on utilise aussi notre propre timer.
+                OnlineSessionTransit.TurnTimeSeconds = TurnTimerSettings.SelectedSeconds;
                 SceneTransit.SelectedGame = OnlineSessionTransit.SelectedGameKind;
                 SceneTransit.SelectedTheme = VisualThemeCatalog.ActiveTheme;
                 if (Application.CanStreamedLevelBeLoaded(GameplaySceneName))
@@ -610,7 +623,7 @@ namespace QuixoUnity.UI
             tmp.fontSize = 16f;
             tmp.fontStyle = FontStyles.Bold;
             tmp.alignment = TextAlignmentOptions.Center;
-            tmp.color = textColor;
+            tmp.color = VisualThemeCatalog.GetReadableTextColor(background);
             tmp.enableWordWrapping = false;
             tmp.overflowMode = TextOverflowModes.Ellipsis;
             tmp.raycastTarget = false;
@@ -773,7 +786,9 @@ namespace QuixoUnity.UI
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)
             {
-                label.color = textColor;
+                Color background = button.interactable ? normalColor : disabledColor;
+                var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+                label.color = VisualThemeCatalog.GetButtonTextColor(background, palette);
             }
         }
 

@@ -3,9 +3,14 @@
 URL GitHub Pages :
 https://bouzekrimohamed.github.io/quixocomet/email-confirmed/
 
-Page de destination apres la confirmation d'une inscription Supabase. Elle ne
-contient aucun secret et renvoie simplement vers la page de telechargement.
+Page affichee apres confirmation email Supabase. Unity envoie cette URL dans
+`redirect_to` lors de l'inscription (`EmailConfirmationRedirectUrl`).
 
-Dans Supabase, ajouter cette URL dans `Authentication > URL Configuration >
-Redirect URLs`. La requete d'inscription Unity envoie aussi cette URL dans le
-parametre `redirect_to`.
+Ajouter cette URL dans `Authentication > URL Configuration > Redirect URLs`.
+
+Si Supabase redirige encore vers la racine `/#access_token=...&type=signup`,
+verifier que l'URL est autorisee dans Supabase et reinscrire un compte test.
+Une page de secours `docs/index.html` redirige aussi vers `/email-confirmed/`.
+
+La page supprime le fragment `#access_token=...` de la barre d'adresse apres
+affichage pour ne pas laisser le token visible.

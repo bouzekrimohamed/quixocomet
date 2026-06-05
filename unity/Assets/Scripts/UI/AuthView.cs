@@ -255,33 +255,24 @@ namespace QuixoUnity.UI
             ApplyInput(signUpEmailInput, palette);
             ApplyInput(signUpUsernameInput, palette);
             ApplyInput(signUpPasswordInput, palette);
-            ApplyButton(loginButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(registerButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(resetPasswordButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(offlineButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(showSignInButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(showSignUpButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(showGuestButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(createAccountButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(alreadyAccountButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(signInPasswordToggleButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButton(signUpPasswordToggleButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(loginButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(registerButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(resetPasswordButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(offlineButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(showSignInButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(showSignUpButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(showGuestButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(createAccountButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(alreadyAccountButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(signInPasswordToggleButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButton(signUpPasswordToggleButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
             if (messageLabel != null)
             {
                 messageLabel.color = palette.UiMuted;
             }
 
-            ApplySceneTextPalette(palette);
+            VisualThemeCatalog.ApplySceneTextPalette(palette);
             UpdateModeButtonState();
-        }
-
-        private static void ApplySceneTextPalette(GameplayPalette palette)
-        {
-            foreach (var label in FindObjectsOfType<TextMeshProUGUI>(true))
-            {
-                bool muted = label.name.Contains("Subtitle") || label.name.Contains("Placeholder") || label.name.Contains("Message");
-                label.color = muted ? palette.UiMuted : palette.UiText;
-            }
         }
 
         private void SetBusy(bool busy)
@@ -411,7 +402,7 @@ namespace QuixoUnity.UI
                 return;
             }
 
-            ApplyButton(button, active ? palette.UiButton : palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButton(button, active ? palette.UiButton : palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
         }
 
         private static void PreparePasswordField(TMP_InputField input)
@@ -488,7 +479,8 @@ namespace QuixoUnity.UI
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)
             {
-                label.color = textColor;
+                Color background = button.interactable ? normalColor : disabledColor;
+                label.color = VisualThemeCatalog.GetButtonTextColor(background, VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme));
             }
         }
 

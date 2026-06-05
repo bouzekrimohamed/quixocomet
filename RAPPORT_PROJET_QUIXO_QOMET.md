@@ -55,20 +55,21 @@ dans le meme dossier. Si l'un de ces elements manque, le jeu ne demarre pas.
 La version macOS est en preparation. Sur macOS, un build non signe peut demander
 un clic droit > `Ouvrir` plutot qu'un double-clic au premier lancement.
 
-### Creation de compte et confirmation email
+### Creation de compte
 
 Pour creer un compte :
 
 1. Ouvrir l'onglet `Inscription` dans l'ecran d'authentification.
 2. Saisir un email, un username et un mot de passe.
 3. Valider l'inscription.
-4. Ouvrir le mail de confirmation envoye par Supabase.
-5. Cliquer sur le lien. Supabase redirige vers la page
-   https://bouzekrimohamed.github.io/quixocomet/email-confirmed/.
+4. Se connecter directement avec l'email ou le username.
 
-Tant que l'email n'est pas confirme, la connexion echoue avec un message clair
-dans l'ecran d'authentification. Une fois l'email confirme, la connexion est
-possible avec l'email ou avec le username.
+Pour la demo, la confirmation email peut rester desactivee dans Supabase afin
+d'eviter les limites d'envoi du provider email par defaut pendant les tests.
+Pour une version production, configurer un SMTP custom dans Supabase (Brevo ou
+autre), reactiver `Confirm email`, puis verifier les Redirect URLs. Unity ne
+configure jamais SMTP et n'utilise jamais la cle `service_role`. La page
+`email-confirmed` reste dans le projet pour la confirmation email.
 
 ### Mot de passe oublie
 
@@ -229,9 +230,10 @@ l'email et une URL de redirection vers la page GitHub Pages du projet. Cette
 page statique utilise Supabase JS pour appliquer le nouveau mot de passe avec
 les tokens fournis dans le lien.
 
-La confirmation email est obligatoire. La requete d'inscription indique la
-page `email-confirmed` comme redirection et Unity refuse la connexion tant
-que Supabase ne renvoie pas un email confirme.
+Pour la demonstration, la confirmation email n'est pas bloquante. Supabase
+peut etre configure avec `Confirm email` desactive, et Unity enregistre la
+session meme si `email_confirmed_at` ou `confirmed_at` est vide. Cela evite
+de bloquer les tests quand Supabase renvoie une limite d'envoi d'emails.
 
 Les sessions sont stockees cote Unity avec `PlayerPrefs`. Le projet conserve
 l'access token, le refresh token, l'id utilisateur, l'email et le username.
@@ -322,6 +324,24 @@ indique si le joueur doit jouer ou attendre l'adversaire. Apres un coup
 valide, Unity envoie le coup, met a jour le tour suivant et termine le match
 si un gagnant est detecte.
 
+Un mode Quixo equipe 2v2 a ete ajoute en V1. Il se lance par lobby : un joueur
+cree un salon, partage le code, puis les autres rejoignent l'equipe 1 ou
+l'equipe 2. La partie ne peut demarrer que quand les deux equipes ont chacune
+deux joueurs. L'equipe 1 joue avec la marque X, l'equipe 2 avec la marque O.
+Les regles Quixo ne changent pas.
+
+Pour le 2v2, `online_matches` garde le match principal, mais ajoute un
+`match_mode`, les quatre slots d'equipe, un `current_turn_index` et
+`winner_team`. Le lobby utilise `online_lobbies` et `online_lobby_players`.
+L'ordre de tour est toujours le meme : equipe 1 joueur 1, equipe 2 joueur 1,
+equipe 1 joueur 2, equipe 2 joueur 2, puis retour au debut.
+
+Les coups 2v2 restent stockes dans `online_moves` avec un numero global au
+match. Le payload ajoute le mode, l'equipe et le joueur qui envoie le coup.
+Les quatre clients pollent les memes coups et reconstruisent donc le meme
+plateau. Le HUD affiche les deux equipes, le joueur actif, et indique si c'est
+au joueur local, a son coequipier ou a un adversaire de jouer.
+
 Le matchmaking contient quelques protections utiles. Les lignes de queue trop
 anciennes sont ignorees pour eviter de matcher un joueur avec une ancienne
 session fermee. Le projet annule aussi les anciennes queues du joueur avant
@@ -340,6 +360,9 @@ elle n'empeche pas completement un client modifie d'envoyer un coup incorrect.
 Une V2 plus solide pourrait utiliser des RPC SQL ou des Edge Functions pour
 valider les coups cote serveur. Elle pourrait aussi remplacer une partie du
 polling par Supabase Realtime.
+
+Le matchmaking aleatoire 2v2 n'est pas implemente dans cette premiere version.
+Le mode equipe passe uniquement par lobby avec code partage.
 
 ## 9. Mode Quixo
 
@@ -483,8 +506,8 @@ refresh echoue, la session est nettoyee et l'utilisateur doit se reconnecter.
 Les limites actuelles sont normales pour une premiere version. La validation
 serveur des coups n'est pas complete : la logique des regles reste dans Unity.
 Le polling est utilise a la place du realtime. Il n'y a pas encore de
-classement, de timer, d'historique complet de parties, de reconnexion avancee
-ni de systeme d'abandon dedie.
+classement, de matchmaking aleatoire 2v2, d'historique complet de parties, de
+reconnexion avancee ni de systeme d'abandon dedie.
 
 Ces limites ne bloquent pas le rendu du projet, mais elles indiquent les
 prochaines etapes si le jeu devait evoluer vers une version plus robuste.
@@ -494,10 +517,9 @@ prochaines etapes si le jeu devait evoluer vers une version plus robuste.
 Les tests manuels prevus pour valider le projet :
 
 - creation de compte avec email, mot de passe et username ;
+- connexion directe apres inscription sans ouvrir la boite mail ;
 - connexion avec email ;
 - connexion avec username ;
-- refus propre d'une connexion avant confirmation email ;
-- page GitHub Pages `email-confirmed` apres validation ;
 - mot de passe oublie et page GitHub Pages de reset ;
 - chargement du profil apres connexion ;
 - ajout d'un ami par username ;
@@ -508,6 +530,7 @@ Les tests manuels prevus pour valider le projet :
 - invitation d'un ami en Qomet ;
 - matchmaking aleatoire Quixo ;
 - matchmaking aleatoire Qomet ;
+- lobby Quixo equipe 2v2 avec quatre comptes ;
 - partie Quixo locale ;
 - partie Qomet locale ;
 - partie en ligne avec deux comptes ;
@@ -515,7 +538,8 @@ Les tests manuels prevus pour valider le projet :
 - verification d'un build Windows.
 
 Ces tests doivent etre realises avec au moins deux comptes Supabase pour
-valider correctement les amis, la presence, les invitations et le matchmaking.
+valider correctement les amis, la presence, les invitations et le matchmaking
+1v1. Le mode Quixo equipe 2v2 demande quatre comptes Supabase differents.
 Le projet contient aussi des tests EditMode pour les regles de Quixo et de
 Qomet, mais le rapport ne suppose pas que toute la partie Unity et online a
 ete validee automatiquement.

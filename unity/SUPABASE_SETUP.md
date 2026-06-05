@@ -15,25 +15,68 @@ Ne jamais utiliser la cle `service_role` dans Unity.
 
 ## 2. Configurer les URLs Auth
 
-Dans `Authentication > Providers > Email`, activer obligatoirement `Confirm email`.
-Un compte doit confirmer son adresse avant de pouvoir ouvrir une session Unity.
+Le projet utilise Supabase Auth. Unity ne configure jamais de SMTP : l'envoi
+email se regle uniquement dans le tableau de bord Supabase.
+
+### Confirmation email (demo ou production)
+
+Pour la demo, vous pouvez desactiver `Confirm email` dans
+`Authentication > Providers > Email`. Unity accepte alors une session meme si
+`email_confirmed_at` ou `confirmed_at` est vide.
+
+Pour activer la confirmation email en production :
+
+1. Configurer un **SMTP custom** dans Supabase (`Project Settings > Auth >
+   SMTP Settings`) pour eviter les limites basses du provider email par defaut.
+   Brevo ou tout autre fournisseur SMTP fonctionne cote Supabase uniquement.
+2. Reactiver `Confirm email` dans `Authentication > Providers > Email`.
+3. Ajuster `Authentication > Rate Limits` si l'option est disponible.
+4. Verifier les envois dans les Auth logs Supabase.
+
+Messages affiches par Unity :
+
+- inscription avec confirmation requise :
+  `Compte cree. Verifiez votre email avant de vous connecter.`
+- connexion directe apres inscription :
+  `Compte cree. Connexion reussie.`
+- email non confirme au login :
+  `Veuillez confirmer votre email avant de vous connecter.`
+- limite email / SMTP / HTTP 429 :
+  `Service email temporairement limite. Reessayez plus tard.`
+
+Les emails peuvent mettre quelques secondes ou minutes a arriver. Si rien n'arrive,
+verifier le dossier Spam/Promotions et les Auth logs Supabase.
+
+Le service email par defaut de Supabase impose des limites basses. Pendant les
+tests sans SMTP custom, cela peut provoquer `email rate limit exceeded` et
+bloquer les nouveaux comptes.
 
 Dans `Authentication > URL Configuration` :
 
 - Site URL : `https://bouzekrimohamed.github.io/quixocomet`
-- Redirect URL : `https://bouzekrimohamed.github.io/quixocomet/reset-password/`
-- Redirect URL : `https://bouzekrimohamed.github.io/quixocomet/email-confirmed/`
+- Redirect URLs (les deux sont obligatoires si confirmation email activee) :
+  - `https://bouzekrimohamed.github.io/quixocomet/reset-password/`
+  - `https://bouzekrimohamed.github.io/quixocomet/email-confirmed/`
 
-Dans `Authentication > Email Templates > Confirm Signup`, conserver un lien qui
-utilise `{{ .ConfirmationURL }}`. Unity envoie
-`https://bouzekrimohamed.github.io/quixocomet/email-confirmed/` dans le
-parametre `redirect_to` de la requete d'inscription. Apres validation, Supabase
-redirige donc vers cette page si elle figure bien dans les Redirect URLs.
+Unity envoie ces URLs via `redirect_to` :
 
-Si le template Supabase personnalise ne respecte pas `redirect_to`, garder
-`{{ .ConfirmationURL }}` puis verifier que la destination finale autorisee est
-la page `email-confirmed`. Il ne faut pas construire manuellement un lien avec
-un token dans le HTML.
+- **Inscription** (`POST /auth/v1/signup?redirect_to=...`) :
+  `EmailConfirmationRedirectUrl` -> `/email-confirmed/`
+- **Mot de passe oublie** (`POST /auth/v1/recover`, body `redirect_to`) :
+  `PasswordResetRedirectUrl` -> `/reset-password/`
+
+Si apres confirmation l'utilisateur arrive sur
+`https://bouzekrimohamed.github.io/quixocomet/#access_token=...&type=signup`
+au lieu de `/email-confirmed/`, cela signifie que `redirect_to` etait absent,
+incorrect, ou non autorise dans Supabase Redirect URLs. Verifier les deux URLs
+ci-dessus dans le dashboard, puis reinscrire un compte test.
+
+Une page de secours `docs/index.html` redirige aussi les tokens racine vers
+`/email-confirmed/` ou `/reset-password/` selon `type`.
+
+Si `Confirm email` est reactive plus tard, conserver dans `Authentication >
+Email Templates > Confirm Signup` un lien qui utilise `{{ .ConfirmationURL }}`.
+Il ne faut pas construire manuellement un lien avec un token dans le HTML.
 
 Dans `Authentication > Email Templates > Reset Password`, verifier que le lien
 de reset utilise aussi une redirection autorisee.
@@ -42,8 +85,8 @@ Pages web statiques :
 
 - `docs/reset-password/` utilise `@supabase/supabase-js@2` via CDN et
   `supabase.auth.updateUser({ password })`;
-- `docs/email-confirmed/` affiche la confirmation et renvoie vers la page de
-  telechargement.
+- `docs/email-confirmed/` reste disponible pour une future reactivation de la
+  confirmation email.
 
 ## 3. Mettre la config dans Unity
 
@@ -191,14 +234,13 @@ Pour une V2 plus stricte, remplacer cette lecture publique par une RPC dediee qu
 2. Ouvrir `IntroVideoScene`.
 3. Play.
 4. Inscription avec email, mot de passe et username.
-5. Verifier que la connexion est refusee proprement avant confirmation.
-6. Ouvrir le lien recu et verifier la page `email-confirmed`.
+5. Connexion directe sans ouvrir la boite mail.
+6. Deconnexion.
 7. Connexion avec email + mot de passe.
-8. Deconnexion.
-9. Connexion avec username + mot de passe.
-10. Cliquer `Mot de passe oublie` avec un email.
-11. Ouvrir le lien recu et changer le mot de passe.
-12. Tester les amis.
+8. Connexion avec username + mot de passe.
+9. Cliquer `Mot de passe oublie` avec un email.
+10. Ouvrir le lien recu et changer le mot de passe.
+11. Tester les amis.
 
 ## 8. Si Supabase n'est pas configure
 
@@ -470,7 +512,316 @@ Pour une V2 plus robuste, ajouter :
 - timer;
 - classement.
 
-## 10. Online Multiplayer Fixes
+## 10. Migration Quixo equipe 2v2
+
+Executer cette migration apres le bloc `## 9. Online Multiplayer`.
+Elle ajoute un lobby 2v2 et etend `online_matches` sans casser les anciens
+matchs 1v1 : `match_mode` vaut `OneVsOne` par defaut.
+
+```sql
+alter table public.online_matches
+  add column if not exists match_mode text not null default 'OneVsOne',
+  add column if not exists team1_player1_id uuid references public.profiles(id) on delete cascade,
+  add column if not exists team1_player2_id uuid references public.profiles(id) on delete cascade,
+  add column if not exists team2_player1_id uuid references public.profiles(id) on delete cascade,
+  add column if not exists team2_player2_id uuid references public.profiles(id) on delete cascade,
+  add column if not exists current_turn_index int not null default 0,
+  add column if not exists winner_team text;
+
+alter table public.online_matches
+  drop constraint if exists online_matches_match_mode_check,
+  drop constraint if exists online_matches_turn_player_check,
+  drop constraint if exists online_matches_winner_player_check,
+  drop constraint if exists online_matches_winner_team_check,
+  drop constraint if exists online_matches_team2v2_complete_check;
+
+alter table public.online_matches
+  add constraint online_matches_match_mode_check
+    check (match_mode in ('OneVsOne', 'Team2v2')),
+  add constraint online_matches_winner_team_check
+    check (winner_team is null or winner_team in ('Team1', 'Team2')),
+  add constraint online_matches_turn_player_check
+    check (
+      (match_mode = 'OneVsOne' and current_turn_id in (player1_id, player2_id))
+      or
+      (match_mode = 'Team2v2' and current_turn_id in (
+        team1_player1_id,
+        team1_player2_id,
+        team2_player1_id,
+        team2_player2_id
+      ))
+    ),
+  add constraint online_matches_winner_player_check
+    check (
+      winner_id is null
+      or winner_id in (
+        player1_id,
+        player2_id,
+        team1_player1_id,
+        team1_player2_id,
+        team2_player1_id,
+        team2_player2_id
+      )
+    ),
+  add constraint online_matches_team2v2_complete_check
+    check (
+      match_mode = 'OneVsOne'
+      or (
+        game_kind = 'Quixo'
+        and team1_player1_id is not null
+        and team1_player2_id is not null
+        and team2_player1_id is not null
+        and team2_player2_id is not null
+        and team1_player1_id <> team1_player2_id
+        and team1_player1_id <> team2_player1_id
+        and team1_player1_id <> team2_player2_id
+        and team1_player2_id <> team2_player1_id
+        and team1_player2_id <> team2_player2_id
+        and team2_player1_id <> team2_player2_id
+      )
+    );
+
+create table if not exists public.online_lobbies (
+  id uuid primary key default gen_random_uuid(),
+  lobby_code text not null unique,
+  game_kind text not null default 'Quixo',
+  match_mode text not null default 'Team2v2',
+  host_user_id uuid not null references public.profiles(id) on delete cascade,
+  status text not null default 'lobby',
+  match_id uuid references public.online_matches(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint online_lobbies_game_kind_check check (game_kind = 'Quixo'),
+  constraint online_lobbies_match_mode_check check (match_mode = 'Team2v2'),
+  constraint online_lobbies_status_check check (status in ('lobby', 'started', 'cancelled'))
+);
+
+create table if not exists public.online_lobby_players (
+  id uuid primary key default gen_random_uuid(),
+  lobby_id uuid not null references public.online_lobbies(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  username text,
+  team_id text not null,
+  slot_index int not null,
+  joined_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique(lobby_id, user_id),
+  unique(lobby_id, team_id, slot_index),
+  constraint online_lobby_players_team_check check (team_id in ('Team1', 'Team2')),
+  constraint online_lobby_players_slot_check check (slot_index in (0, 1))
+);
+
+alter table public.online_lobbies enable row level security;
+alter table public.online_lobby_players enable row level security;
+
+drop policy if exists "online_lobbies_select_joinable" on public.online_lobbies;
+drop policy if exists "online_lobbies_insert_host" on public.online_lobbies;
+drop policy if exists "online_lobbies_update_host" on public.online_lobbies;
+
+create policy "online_lobbies_select_joinable"
+on public.online_lobbies
+for select
+to authenticated
+using (
+  status = 'lobby'
+  or host_user_id = auth.uid()
+  or exists (
+    select 1
+    from public.online_lobby_players lp
+    where lp.lobby_id = online_lobbies.id
+      and lp.user_id = auth.uid()
+  )
+);
+
+create policy "online_lobbies_insert_host"
+on public.online_lobbies
+for insert
+to authenticated
+with check (
+  auth.uid() = host_user_id
+  and game_kind = 'Quixo'
+  and match_mode = 'Team2v2'
+  and status = 'lobby'
+);
+
+create policy "online_lobbies_update_host"
+on public.online_lobbies
+for update
+to authenticated
+using (auth.uid() = host_user_id)
+with check (
+  auth.uid() = host_user_id
+  and status in ('started', 'cancelled')
+);
+
+drop policy if exists "online_lobby_players_select_lobby" on public.online_lobby_players;
+drop policy if exists "online_lobby_players_insert_self" on public.online_lobby_players;
+drop policy if exists "online_lobby_players_delete_self" on public.online_lobby_players;
+
+create policy "online_lobby_players_select_lobby"
+on public.online_lobby_players
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.online_lobbies l
+    where l.id = online_lobby_players.lobby_id
+      and l.status in ('lobby', 'started')
+  )
+);
+
+create policy "online_lobby_players_insert_self"
+on public.online_lobby_players
+for insert
+to authenticated
+with check (
+  auth.uid() = user_id
+  and exists (
+    select 1
+    from public.online_lobbies l
+    where l.id = lobby_id
+      and l.status = 'lobby'
+  )
+);
+
+create policy "online_lobby_players_delete_self"
+on public.online_lobby_players
+for delete
+to authenticated
+using (auth.uid() = user_id);
+
+drop policy if exists "online_matches_select_participants" on public.online_matches;
+drop policy if exists "online_matches_insert_participant" on public.online_matches;
+drop policy if exists "online_matches_update_participants" on public.online_matches;
+
+create policy "online_matches_select_participants"
+on public.online_matches
+for select
+to authenticated
+using (
+  auth.uid() in (
+    player1_id,
+    player2_id,
+    team1_player1_id,
+    team1_player2_id,
+    team2_player1_id,
+    team2_player2_id
+  )
+);
+
+create policy "online_matches_insert_participant"
+on public.online_matches
+for insert
+to authenticated
+with check (
+  (
+    match_mode = 'OneVsOne'
+    and auth.uid() in (player1_id, player2_id)
+    and current_turn_id = player1_id
+    and status = 'active'
+  )
+  or
+  (
+    match_mode = 'Team2v2'
+    and game_kind = 'Quixo'
+    and auth.uid() in (
+      team1_player1_id,
+      team1_player2_id,
+      team2_player1_id,
+      team2_player2_id
+    )
+    and current_turn_id = team1_player1_id
+    and current_turn_index = 0
+    and status = 'active'
+  )
+);
+
+create policy "online_matches_update_participants"
+on public.online_matches
+for update
+to authenticated
+using (
+  auth.uid() in (
+    player1_id,
+    player2_id,
+    team1_player1_id,
+    team1_player2_id,
+    team2_player1_id,
+    team2_player2_id
+  )
+)
+with check (
+  auth.uid() in (
+    player1_id,
+    player2_id,
+    team1_player1_id,
+    team1_player2_id,
+    team2_player1_id,
+    team2_player2_id
+  )
+);
+
+drop policy if exists "online_moves_select_match_participants" on public.online_moves;
+drop policy if exists "online_moves_insert_current_turn" on public.online_moves;
+
+create policy "online_moves_select_match_participants"
+on public.online_moves
+for select
+to authenticated
+using (
+  exists (
+    select 1
+    from public.online_matches m
+    where m.id = online_moves.match_id
+      and auth.uid() in (
+        m.player1_id,
+        m.player2_id,
+        m.team1_player1_id,
+        m.team1_player2_id,
+        m.team2_player1_id,
+        m.team2_player2_id
+      )
+  )
+);
+
+create policy "online_moves_insert_current_turn"
+on public.online_moves
+for insert
+to authenticated
+with check (
+  auth.uid() = player_id
+  and exists (
+    select 1
+    from public.online_matches m
+    where m.id = online_moves.match_id
+      and m.status = 'active'
+      and m.current_turn_id = auth.uid()
+      and auth.uid() in (
+        m.player1_id,
+        m.player2_id,
+        m.team1_player1_id,
+        m.team1_player2_id,
+        m.team2_player1_id,
+        m.team2_player2_id
+      )
+  )
+);
+```
+
+### Utiliser le lobby Quixo 2v2
+
+1. Les 4 joueurs doivent etre connectes avec 4 comptes differents.
+2. Le host va dans `Jouer > En ligne > Quixo equipe 2v2`.
+3. Il clique `Creer` et partage le code lobby affiche.
+4. Les autres joueurs entrent le code et rejoignent `Equipe 1` ou `Equipe 2`.
+5. Quand il y a 2 joueurs par equipe, le host clique `Demarrer partie`.
+
+Ordre de tour : Equipe 1 joueur 1, Equipe 2 joueur 1, Equipe 1 joueur 2,
+Equipe 2 joueur 2, puis on recommence. Il n'y a pas encore de matchmaking
+aleatoire 2v2 dans cette V1.
+
+## 11. Online Multiplayer Fixes
 
 ### Pourquoi les deux clients voyaient "tour de l'adversaire"
 
@@ -538,7 +889,7 @@ Le client Unity loggue maintenant :
 
 Ouvrir `Window > General > Console` dans Unity et observer ces logs des deux cotes pour comprendre l'etat du match.
 
-## 11. Matchmaking hasard / "match avec du vide"
+## 12. Matchmaking hasard / "match avec du vide"
 
 ### Symptomes observes
 
@@ -639,12 +990,90 @@ grant execute on function public.matchmake_user(text) to authenticated;
 Avantages : verrou `for update skip locked` garantit qu'aucun autre RPC ne peut prendre le meme adversaire. Aucun risque de double match.
 
 Si vous activez cette RPC, ouvrir un ticket Unity pour remplacer `TryFindOrCreateMatchRoutine` par un seul `POST /rest/v1/rpc/matchmake_user` avec body `{ "p_game_kind": "Quixo" }`. **Tant que vous n'avez pas migre Unity, ne lancez PAS cette RPC car elle n'est pas appelee** : juste la creer ne casse rien, mais elle reste dormante.
-# Confirmation email obligatoire
 
-Dans le tableau de bord Supabase, ouvrir `Authentication > Providers > Email`
-et activer `Confirm email`. Un nouveau compte doit cliquer sur le lien reçu par
-email avant de pouvoir se connecter dans Unity. Le client verifie aussi
-`email_confirmed_at` ou `confirmed_at` avant d'enregistrer une session.
+## 12. Confirmation email et SMTP
+
+Unity ne configure pas SMTP. Toute la configuration email se fait dans Supabase
+Dashboard :
+
+- `Project Settings > Auth > SMTP Settings` pour un SMTP custom (ex. Brevo) ;
+- `Authentication > Providers > Email` pour activer ou desactiver `Confirm email` ;
+- `Authentication > URL Configuration` pour les Redirect URLs ;
+- `Authentication > Email Templates` pour les modeles Confirm Signup et Reset Password.
+
+Pour la demo, `Confirm email` peut rester desactive afin d'eviter les limites
+d'envoi du provider Supabase par defaut. Unity enregistre alors la session meme
+si `email_confirmed_at` ou `confirmed_at` est vide.
+
+Si `Confirm email` est active avec SMTP custom :
+
+- Unity affiche `Compte cree. Verifiez votre email avant de vous connecter.` quand
+  Supabase ne renvoie pas encore de `access_token` ;
+- Unity bloque proprement un login non confirme ;
+- les emails peuvent arriver avec un delai : verifier aussi Spam/Promotions.
+
+Si Supabase renvoie `email rate limit exceeded`, HTTP 429 ou une erreur SMTP,
+Unity affiche `Service email temporairement limite. Reessayez plus tard.` au
+lieu du JSON brut.
 
 Conserver l'URL de reset password GitHub Pages autorisee :
 `https://bouzekrimohamed.github.io/quixocomet/reset-password/`.
+Redirect URL optionnelle de confirmation :
+`https://bouzekrimohamed.github.io/quixocomet/email-confirmed/`.
+
+Unity signup : `POST /auth/v1/signup?redirect_to=<EmailConfirmationRedirectUrl>`.
+Unity recover : body JSON `redirect_to` = `PasswordResetRedirectUrl`.
+
+Si l'utilisateur atterrit sur `/#access_token=...&type=signup`, le `redirect_to`
+signup est absent ou non autorise dans Supabase Redirect URLs.
+
+Ne jamais mettre la cle `service_role` dans Unity.
+
+## 13. Timer de tour (V1)
+
+### Aucune migration SQL n'est requise
+
+Le timer de tour est entierement gere cote client Unity. Aucune colonne n'est
+ajoutee aux tables `online_matches`, `online_moves`, `matchmaking_queue` ou
+`match_invites`.
+
+### Comment marche le timer
+
+- L'utilisateur choisit `Sans limite`, `15s`, `30s` ou `60s` dans le menu, avant
+  de lancer une partie. Le choix est persiste via `PlayerPrefs`
+  (`Quixo.TurnTimerSeconds`).
+- En partie locale 2 joueurs : un compte a rebours est lance pour le joueur
+  courant. S'il expire, l'autre joueur gagne par inactivite.
+- En partie en ligne : chaque client lance son propre timer quand c'est son
+  tour. A l'expiration, le client qui a perdu envoie via Supabase un PATCH sur
+  `online_matches` (`status=finished`, `winner_id=opponent`). L'autre client
+  detecte le passage en `finished` via son polling habituel et affiche la fin
+  de partie.
+
+### Limite V1 documentee
+
+- La duree n'est pas serialisee dans la base. Chaque client utilise sa propre
+  preference locale. En pratique : pour une partie entre amis ou un
+  matchmaking aleatoire, si A a choisi 30s et B a choisi 60s, alors chaque
+  client applique son propre timer pour ses propres tours.
+- En matchmaking aleatoire, si l'utilisateur a choisi "Sans limite", la valeur
+  par defaut `30s` est appliquee pour eviter une partie qui ne se termine
+  jamais. C'est fait dans `MainMenuController.StartOnlineGame`.
+- Une V2 robuste passerait par une colonne `turn_time_seconds` dans
+  `online_matches` + une mise a jour du DTO `OnlineMatchDto`. Le passage est
+  documente mais non implemente pour rester compatible avec les matchs deja
+  crees.
+
+### RLS et securite
+
+Le timer ne change aucune policy. Les regles RLS existantes
+(`online_matches_update_participants`, `online_moves_insert_current_turn`)
+restent suffisantes :
+
+- Le client qui perd au temps envoie un PATCH `online_matches` avec
+  `winner_id` = id adverse. La policy autorise un participant a modifier le
+  match.
+- Aucun nouveau coup n'est insere dans `online_moves` pour le timeout. Le
+  match se termine simplement sur changement de statut.
+
+Aucune cle `service_role` n'est ajoutee.

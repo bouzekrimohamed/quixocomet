@@ -142,18 +142,18 @@ namespace QuixoUnity.Auth
                 password = password
             };
 
-            string url = $"{SupabaseSettings.Url}/auth/v1/{endpoint}";
-            if (createProfile && !string.IsNullOrWhiteSpace(SupabaseSettings.EmailConfirmationRedirectUrl))
-            {
-                url += $"?redirect_to={UnityWebRequest.EscapeURL(SupabaseSettings.EmailConfirmationRedirectUrl)}";
-            }
+            string url = BuildAuthRequestUrl(endpoint, createProfile);
 
             using var request = CreateJsonRequest(url, "POST", UnityEngine.JsonUtility.ToJson(payload), string.Empty);
             yield return request.SendWebRequest();
 
             if (!IsSuccess(request))
             {
-                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Connexion impossible.")));
+                string message = SupabaseRequestHelper.MapAuthError(
+                    request,
+                    createProfile ? "Inscription impossible." : "Connexion impossible.",
+                    createProfile);
+                onComplete?.Invoke(AuthOperationResult.Fail(message));
                 yield break;
             }
 
@@ -170,18 +170,11 @@ namespace QuixoUnity.Auth
                 yield break;
             }
 
-            if (!authResponse.user.IsEmailConfirmed)
-            {
-                SessionManager.ClearSession();
-                onComplete?.Invoke(AuthOperationResult.Fail("Veuillez confirmer votre email avant de vous connecter."));
-                yield break;
-            }
-
             SessionManager.SaveSession(authResponse);
             if (createProfile)
             {
                 string username = string.IsNullOrWhiteSpace(requestedUsername) ? GenerateUsername(email) : SanitizeUsername(requestedUsername);
-                yield return EnsureProfileRoutine(authResponse, username, onComplete);
+                yield return EnsureProfileRoutine(authResponse, username, onComplete, "Compte cree. Connexion reussie.");
                 yield break;
             }
 
@@ -202,7 +195,7 @@ namespace QuixoUnity.Auth
             yield return EnsureProfileRoutine(authResponse, fallbackUsername, onComplete);
         }
 
-        private IEnumerator EnsureProfileRoutine(AuthResponse session, string username, Action<AuthOperationResult> onComplete)
+        private IEnumerator EnsureProfileRoutine(AuthResponse session, string username, Action<AuthOperationResult> onComplete, string successMessage = "Connecte.")
         {
             string displayName = username;
             var payload = new ProfileUpsertRequest
@@ -234,7 +227,7 @@ namespace QuixoUnity.Auth
             };
 
             SessionManager.SaveSession(session, profile);
-            onComplete?.Invoke(AuthOperationResult.Ok("Connecte.", session, profile));
+            onComplete?.Invoke(AuthOperationResult.Ok(successMessage, session, profile));
         }
 
         private IEnumerator FetchProfileRoutine(string userId, Action<AuthOperationResult> onComplete)
@@ -307,11 +300,31 @@ namespace QuixoUnity.Auth
 
             if (!IsSuccess(request))
             {
-                onComplete?.Invoke(AuthOperationResult.Fail(ParseError(request, "Email de reinitialisation impossible.")));
+                string message = SupabaseRequestHelper.IsEmailRateLimit(request)
+                    ? SupabaseRequestHelper.EmailRateLimitMessage
+                    : ParseError(request, "Email de reinitialisation impossible.");
+                onComplete?.Invoke(AuthOperationResult.Fail(message));
                 yield break;
             }
 
             onComplete?.Invoke(AuthOperationResult.Ok("Email de reinitialisation envoye."));
+        }
+
+        private static string BuildAuthRequestUrl(string endpoint, bool isSignup)
+        {
+            string url = $"{SupabaseSettings.Url}/auth/v1/{endpoint}";
+            if (!isSignup)
+            {
+                return url;
+            }
+
+            string redirect = SupabaseSettings.EmailConfirmationRedirectUrl?.Trim();
+            if (string.IsNullOrWhiteSpace(redirect))
+            {
+                return url;
+            }
+
+            return url + "?redirect_to=" + UnityWebRequest.EscapeURL(redirect);
         }
 
         private static UnityWebRequest CreateJsonRequest(string url, string method, string json, string accessToken)

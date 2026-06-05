@@ -31,6 +31,15 @@ namespace QuixoUnity.Gameplay
         private int _lastAppliedMoveNumber;
         private OnlineMatchDto _onlineMatch;
         private Coroutine _onlinePollRoutine;
+        private int _turnTimeSecondsForSession;
+        private bool _timerEventBound;
+        private bool _gameOverShown;
+        // Vrai si une perte par inactivite vient d'etre declenchee (local ou online).
+        // Permet de styliser la popup de fin de partie.
+        private bool _lastLossWasTimeout;
+        // Dernier turn_id online observe : on relance le timer uniquement si le tour a change,
+        // sinon chaque poll (toutes les 1s) reinitialiserait le compte a rebours.
+        private string _lastKnownTurnId = string.Empty;
 
         private bool IsOnlineGame => OnlineSessionTransit.IsOnlineMatch && _onlineMatch != null;
 
@@ -43,6 +52,30 @@ namespace QuixoUnity.Gameplay
         private void OnDestroy()
         {
             StopOnlinePolling();
+            UnbindTimerEvent();
+        }
+
+        private void BindTimerEvent()
+        {
+            if (_timerEventBound || hudView == null)
+            {
+                return;
+            }
+
+            hudView.TurnTimedOut += HandleTurnTimedOut;
+            _timerEventBound = true;
+        }
+
+        private void UnbindTimerEvent()
+        {
+            if (!_timerEventBound || hudView == null)
+            {
+                _timerEventBound = false;
+                return;
+            }
+
+            hudView.TurnTimedOut -= HandleTurnTimedOut;
+            _timerEventBound = false;
         }
 
         public void SelectGame(GameKind kind)
@@ -88,7 +121,7 @@ namespace QuixoUnity.Gameplay
 
             if (_state.Winner != PlayerMark.None)
             {
-                hudView.SetInfo($"{WinnerMessage(_state.Winner, gameKind)} Recommencez ou revenez au menu.");
+                hudView.SetInfo($"{WinnerMessageForCurrentMatch(_state.Winner)} Recommencez ou revenez au menu.");
                 return;
             }
 
@@ -102,6 +135,9 @@ namespace QuixoUnity.Gameplay
             var payload = new OnlineMovePayload
             {
                 gameKind = OnlineSessionTransit.GameKindName(gameKind),
+                matchMode = OnlineSessionTransit.MatchModeName(OnlineSessionTransit.SelectedMatchMode),
+                team = OnlineSessionTransit.TeamName(OnlineSessionTransit.TeamForUser(SessionManager.UserId)),
+                playerId = SessionManager.UserId,
                 action = "direction",
                 selectedRow = origin.x,
                 selectedCol = origin.y,
@@ -133,7 +169,7 @@ namespace QuixoUnity.Gameplay
 
             if (_state.Winner != PlayerMark.None)
             {
-                hudView.SetInfo($"{WinnerMessage(_state.Winner, gameKind)} Recommencez ou revenez au menu.");
+                hudView.SetInfo($"{WinnerMessageForCurrentMatch(_state.Winner)} Recommencez ou revenez au menu.");
                 return;
             }
 
@@ -262,8 +298,9 @@ namespace QuixoUnity.Gameplay
             {
                 _state.SetWinner(winner);
                 boardView.Render(_state, null);
-                hudView.SetInfo(WinnerMessage(winner, gameKind));
+                hudView.SetInfo(WinnerMessageForCurrentMatch(winner));
                 hudView.SetTurn(_state.CurrentPlayer);
+                hudView.StopTurnTimer();
                 ShowGameOver(winner);
                 return;
             }
@@ -272,6 +309,20 @@ namespace QuixoUnity.Gameplay
             boardView.Render(_state, null);
             hudView.SetTurn(_state.CurrentPlayer);
             hudView.SetInfo(string.IsNullOrWhiteSpace(successMessage) ? "Coup valide." : successMessage);
+
+            // En local : on relance le timer pour le nouveau joueur courant.
+            // En online : UpdateOnlineHud() est appele par le path ApplyOnlineMatchStatus et
+            // gere le timer la-bas pour rester aligne avec le serveur. On stoppe le timer entre
+            // les deux pour eviter qu'un timeout faussement decla par notre propre PATCH n'arrive
+            // pendant la latence reseau.
+            if (IsOnlineGame)
+            {
+                hudView.StopTurnTimer();
+            }
+            else
+            {
+                RestartTimerForCurrentPlayer();
+            }
         }
 
         private static IGameRules CreateRules(GameKind kind)
@@ -306,6 +357,9 @@ namespace QuixoUnity.Gameplay
         private void StartGame(GameKind kind, string message)
         {
             _ready = false;
+            _gameOverShown = false;
+            _lastLossWasTimeout = false;
+            _lastKnownTurnId = string.Empty;
             StopOnlinePolling();
 
             if (!ResolveReferences())
@@ -324,11 +378,19 @@ namespace QuixoUnity.Gameplay
             _applyingOnlineMove = false;
             _lastAppliedMoveNumber = 0;
 
+            // On lit la duree du tour pour cette session. En online, on prend la valeur stockee
+            // dans OnlineSessionTransit (peuplee depuis le menu/invitation). Sinon, on lit la
+            // preference locale du joueur. 0 = sans limite.
+            _turnTimeSecondsForSession = OnlineSessionTransit.IsOnlineMatch && OnlineSessionTransit.TurnTimeSeconds > 0
+                ? OnlineSessionTransit.TurnTimeSeconds
+                : TurnTimerSettings.SelectedSeconds;
+
             hudView.Bind(this);
             hudView.SetGameKind(gameKind);
             hudView.HideGameOver();
             hudView.SetRestartEnabled(!OnlineSessionTransit.IsOnlineMatch);
             hudView.SetDirections(new List<MoveDirection>());
+            BindTimerEvent();
             boardView.Initialize(_state.Size, HandleCellClick, gameKind);
             boardView.Render(_state, null);
             hudView.SetTurn(_state.CurrentPlayer);
@@ -347,6 +409,93 @@ namespace QuixoUnity.Gameplay
             {
                 ConfigureOnlineSession();
             }
+            else
+            {
+                // Demarrage du timer en local des que la partie est prete.
+                RestartTimerForCurrentPlayer();
+            }
+        }
+
+        private void RestartTimerForCurrentPlayer()
+        {
+            if (hudView == null || _state == null || _gameOverShown)
+            {
+                return;
+            }
+
+            if (_state.Winner != PlayerMark.None)
+            {
+                hudView.StopTurnTimer();
+                return;
+            }
+
+            if (_turnTimeSecondsForSession <= 0)
+            {
+                hudView.StartTurnTimer(0, true);
+                return;
+            }
+
+            bool isLocalTurn;
+            if (IsOnlineGame)
+            {
+                string turnId = string.IsNullOrWhiteSpace(_onlineMatch.current_turn_id)
+                    ? _onlineMatch.player1_id
+                    : _onlineMatch.current_turn_id;
+                isLocalTurn = turnId == SessionManager.UserId;
+            }
+            else
+            {
+                // En local 2 joueurs : on considere toujours que le timer s'applique au joueur courant
+                // qui partage le clavier/souris avec son adversaire.
+                isLocalTurn = true;
+            }
+
+            hudView.StartTurnTimer(_turnTimeSecondsForSession, isLocalTurn);
+        }
+
+        private void HandleTurnTimedOut()
+        {
+            if (_gameOverShown || _state == null || _state.Winner != PlayerMark.None)
+            {
+                return;
+            }
+
+            // En online, on n'agit que si le timeout concerne notre propre tour. L'autre client
+            // verra le match passer en finished via le polling.
+            if (IsOnlineGame)
+            {
+                string turnId = string.IsNullOrWhiteSpace(_onlineMatch.current_turn_id)
+                    ? _onlineMatch.player1_id
+                    : _onlineMatch.current_turn_id;
+                if (turnId != SessionManager.UserId)
+                {
+                    return;
+                }
+            }
+
+            PlayerMark loser = _state.CurrentPlayer;
+            PlayerMark winner = loser == PlayerMark.Player1 ? PlayerMark.Player2 : PlayerMark.Player1;
+            _lastLossWasTimeout = true;
+            _state.SetWinner(winner);
+            Debug.Log($"[Timer] Turn timed out. loser={loser} winner={winner} online={IsOnlineGame}");
+            boardView?.Render(_state, null);
+            hudView.SetInfo("Temps ecoule.");
+            hudView.SetTurn(_state.CurrentPlayer);
+            ShowGameOver(winner);
+
+            if (IsOnlineGame && onlineMatchService != null && _onlineMatch != null)
+            {
+                if (OnlineSessionTransit.IsTeam2v2)
+                {
+                    var winnerTeam = winner == PlayerMark.Player1 ? TeamId.Team1 : TeamId.Team2;
+                    onlineMatchService.UpdateTeamMatchFinished(_onlineMatch, winnerTeam, _ => { });
+                }
+                else
+                {
+                    string opponentId = OnlineSessionTransit.OpponentOf(SessionManager.UserId);
+                    onlineMatchService.UpdateMatchFinished(_onlineMatch, opponentId, _ => { });
+                }
+            }
         }
 
         private void ConfigureOnlineSession()
@@ -354,18 +503,12 @@ namespace QuixoUnity.Gameplay
             ResolveOnlineServices();
 
             string localUserId = SessionManager.UserId;
-            if (localUserId != OnlineSessionTransit.Player1Id && localUserId != OnlineSessionTransit.Player2Id)
-            {
-                Debug.LogError($"[Online] Local user {localUserId} is not part of match {OnlineSessionTransit.MatchId} (p1={OnlineSessionTransit.Player1Id} p2={OnlineSessionTransit.Player2Id}).");
-                hudView.SetInfo("Vous ne faites pas partie de ce match. Retour au menu.");
-                return;
-            }
-
             string currentTurnId = OnlineSessionTransit.CurrentTurnId;
             if (string.IsNullOrWhiteSpace(currentTurnId))
             {
-                // Securite : si le serveur ne renvoie pas current_turn_id, c'est forcement player1.
-                currentTurnId = OnlineSessionTransit.Player1Id;
+                currentTurnId = OnlineSessionTransit.IsTeam2v2
+                    ? OnlineSessionTransit.UserIdForTurnIndex(OnlineSessionTransit.CurrentTurnIndex)
+                    : OnlineSessionTransit.Player1Id;
                 OnlineSessionTransit.CurrentTurnId = currentTurnId;
             }
 
@@ -373,18 +516,31 @@ namespace QuixoUnity.Gameplay
             {
                 id = OnlineSessionTransit.MatchId,
                 game_kind = OnlineSessionTransit.GameKindName(OnlineSessionTransit.SelectedGameKind),
+                match_mode = OnlineSessionTransit.MatchModeName(OnlineSessionTransit.SelectedMatchMode),
                 player1_id = OnlineSessionTransit.Player1Id,
                 player2_id = OnlineSessionTransit.Player2Id,
+                team1_player1_id = OnlineSessionTransit.Team1Player1Id,
+                team1_player2_id = OnlineSessionTransit.Team1Player2Id,
+                team2_player1_id = OnlineSessionTransit.Team2Player1Id,
+                team2_player2_id = OnlineSessionTransit.Team2Player2Id,
                 current_turn_id = currentTurnId,
+                current_turn_index = OnlineSessionTransit.CurrentTurnIndex,
                 status = "active"
             };
+
+            if (!OnlineSessionTransit.IsValidForLocalPlayer(_onlineMatch, localUserId))
+            {
+                Debug.LogError($"[Online] Local user {localUserId} is not part of match {OnlineSessionTransit.MatchId}.");
+                hudView.SetInfo("Vous ne faites pas partie de ce match. Retour au menu.");
+                return;
+            }
 
             // Aligne immediatement l'etat local sur le tour serveur.
             _state.SetCurrentPlayer(OnlineSessionTransit.PlayerMarkForUser(currentTurnId));
 
             bool isMyTurn = currentTurnId == localUserId;
             string localMark = OnlineSessionTransit.LocalPlayerMark() == PlayerMark.Player1 ? "Player1" : "Player2";
-            Debug.Log($"[Online] Loaded match {_onlineMatch.id} p1={_onlineMatch.player1_id} p2={_onlineMatch.player2_id} turn={_onlineMatch.current_turn_id} local={localUserId} localMark={localMark} isMyTurn={isMyTurn}");
+            Debug.Log($"[Online] Loaded match {_onlineMatch.id} mode={_onlineMatch.match_mode} p1={_onlineMatch.player1_id} p2={_onlineMatch.player2_id} turn={_onlineMatch.current_turn_id} local={localUserId} localMark={localMark} isMyTurn={isMyTurn}");
 
             onlinePresenceService?.StartPresence();
             hudView.SetRestartEnabled(false);
@@ -546,11 +702,26 @@ namespace QuixoUnity.Gameplay
 
             _onlineSubmitting = true;
             string winnerId = WinnerUserId(_state.Winner);
-            string nextTurnId = string.IsNullOrWhiteSpace(winnerId)
-                ? OnlineSessionTransit.OpponentOf(SessionManager.UserId)
-                : SessionManager.UserId;
+            string winnerTeam = WinnerTeamName(_state.Winner);
+            int nextTurnIndex = _onlineMatch.current_turn_index;
+            string nextTurnId;
+            if (OnlineSessionTransit.IsTeam2v2)
+            {
+                nextTurnIndex = string.IsNullOrWhiteSpace(winnerTeam)
+                    ? (_onlineMatch.current_turn_index + 1) % 4
+                    : _onlineMatch.current_turn_index;
+                nextTurnId = string.IsNullOrWhiteSpace(winnerTeam)
+                    ? OnlineSessionTransit.UserIdForTurnIndex(nextTurnIndex)
+                    : SessionManager.UserId;
+            }
+            else
+            {
+                nextTurnId = string.IsNullOrWhiteSpace(winnerId)
+                    ? OnlineSessionTransit.OpponentOf(SessionManager.UserId)
+                    : SessionManager.UserId;
+            }
 
-            onlineMatchService.SubmitMove(_onlineMatch, payload, nextTurnId, winnerId, result =>
+            onlineMatchService.SubmitMove(_onlineMatch, payload, nextTurnId, winnerId, winnerTeam, nextTurnIndex, result =>
             {
                 _onlineSubmitting = false;
                 if (result == null || !result.Success)
@@ -568,7 +739,9 @@ namespace QuixoUnity.Gameplay
                 ApplyOnlineMatchStatus();
                 if (_state.Winner == PlayerMark.None)
                 {
-                    hudView.SetInfo("Coup envoye. Tour de l'adversaire.");
+                    hudView.SetInfo(OnlineSessionTransit.IsTeam2v2
+                        ? $"Coup envoye. Tour de {OnlineSessionTransit.UsernameForUser(nextTurnId)}."
+                        : "Coup envoye. Tour de l'adversaire.");
                 }
             });
         }
@@ -598,7 +771,19 @@ namespace QuixoUnity.Gameplay
 
             if (turnId != SessionManager.UserId)
             {
-                hudView.SetInfo("Tour de l'adversaire.");
+                if (OnlineSessionTransit.IsTeam2v2)
+                {
+                    TeamId localTeam = OnlineSessionTransit.TeamForUser(SessionManager.UserId);
+                    TeamId activeTeam = OnlineSessionTransit.TeamForUser(turnId);
+                    hudView.SetInfo(localTeam == activeTeam
+                        ? "Tour de votre coequipier."
+                        : "Tour de l'adversaire.");
+                }
+                else
+                {
+                    hudView.SetInfo("Tour de l'adversaire.");
+                }
+
                 return false;
             }
 
@@ -609,6 +794,22 @@ namespace QuixoUnity.Gameplay
         {
             if (_onlineMatch == null)
             {
+                return;
+            }
+
+            if (_onlineMatch.status == "finished"
+                && OnlineSessionTransit.IsTeam2v2
+                && !string.IsNullOrWhiteSpace(_onlineMatch.winner_team))
+            {
+                TeamId winnerTeam = OnlineSessionTransit.ParseTeam(_onlineMatch.winner_team);
+                var winner = winnerTeam == TeamId.Team1 ? PlayerMark.Player1 : PlayerMark.Player2;
+                _state.SetWinner(winner);
+                boardView.Render(_state, null);
+                TeamId localTeam = OnlineSessionTransit.TeamForUser(SessionManager.UserId);
+                hudView.SetInfo(localTeam == winnerTeam
+                    ? $"Victoire de l'equipe {(winnerTeam == TeamId.Team1 ? "1" : "2")}."
+                    : $"Defaite contre l'equipe {(winnerTeam == TeamId.Team1 ? "1" : "2")}.");
+                ShowGameOver(winner);
                 return;
             }
 
@@ -640,14 +841,52 @@ namespace QuixoUnity.Gameplay
 
             var currentPlayer = OnlineSessionTransit.PlayerMarkForUser(turnId);
             _state.SetCurrentPlayer(currentPlayer);
-            hudView.SetTurn(_state.CurrentPlayer);
+            bool isMyTurn = !string.IsNullOrWhiteSpace(SessionManager.UserId) && turnId == SessionManager.UserId;
+            bool turnChanged = !string.Equals(_lastKnownTurnId, turnId, StringComparison.Ordinal);
+
+            if (OnlineSessionTransit.IsTeam2v2)
+            {
+                TeamId localTeam = OnlineSessionTransit.TeamForUser(SessionManager.UserId);
+                TeamId activeTeam = OnlineSessionTransit.TeamForUser(turnId);
+                string activeName = OnlineSessionTransit.UsernameForUser(turnId);
+                string relation = isMyTurn
+                    ? "A vous de jouer"
+                    : localTeam == activeTeam ? "Tour de votre coequipier" : "Tour de l'adversaire";
+                hudView.SetTurn(_state.CurrentPlayer, isMyTurn ? "A vous de jouer" : $"Tour : {activeName}");
+                hudView.SetInfo(
+                    $"Mode : Quixo equipe 2v2 | Equipe 1 : {OnlineSessionTransit.TeamLabel(TeamId.Team1)} | Equipe 2 : {OnlineSessionTransit.TeamLabel(TeamId.Team2)} | {relation}.");
+
+                if (turnChanged)
+                {
+                    _lastKnownTurnId = turnId;
+                    if (_state.Winner == PlayerMark.None && _onlineMatch.status != "finished")
+                    {
+                        RestartTimerForCurrentPlayer();
+                    }
+                }
+
+                return;
+            }
+
             string opponent = string.IsNullOrWhiteSpace(OnlineSessionTransit.OpponentUsername)
                 ? "adversaire"
                 : OnlineSessionTransit.OpponentUsername;
-            bool isMyTurn = !string.IsNullOrWhiteSpace(SessionManager.UserId) && turnId == SessionManager.UserId;
+            string turnLabel = isMyTurn ? "A vous de jouer" : $"Tour de {opponent}";
+            hudView.SetTurn(_state.CurrentPlayer, turnLabel);
             hudView.SetInfo(isMyTurn
-                ? $"Online vs {opponent}: a vous de jouer."
-                : $"Online vs {opponent}: tour de l'adversaire.");
+                ? $"Online vs {opponent} : a vous de jouer."
+                : $"Online vs {opponent} : tour de l'adversaire.");
+
+            // Le timer ne doit etre relance QUE quand le tour change. Sans cette garde, chaque
+            // poll (1s) remettrait le compte a rebours a fond.
+            if (turnChanged)
+            {
+                _lastKnownTurnId = turnId;
+                if (_state.Winner == PlayerMark.None && _onlineMatch.status != "finished")
+                {
+                    RestartTimerForCurrentPlayer();
+                }
+            }
         }
 
         private void StopOnlinePolling()
@@ -714,7 +953,22 @@ namespace QuixoUnity.Gameplay
                 return string.Empty;
             }
 
+            if (OnlineSessionTransit.IsTeam2v2)
+            {
+                return string.Empty;
+            }
+
             return winner == PlayerMark.Player1 ? OnlineSessionTransit.Player1Id : OnlineSessionTransit.Player2Id;
+        }
+
+        private static string WinnerTeamName(PlayerMark winner)
+        {
+            if (!OnlineSessionTransit.IsTeam2v2 || winner == PlayerMark.None)
+            {
+                return string.Empty;
+            }
+
+            return OnlineSessionTransit.TeamName(winner == PlayerMark.Player1 ? TeamId.Team1 : TeamId.Team2);
         }
 
         private void ShowGameOver(PlayerMark winner)
@@ -724,16 +978,58 @@ namespace QuixoUnity.Gameplay
                 return;
             }
 
+            if (_gameOverShown)
+            {
+                return;
+            }
+
+            _gameOverShown = true;
+            hudView.StopTurnTimer();
+            StopOnlinePolling();
+
+            if (IsOnlineGame && OnlineSessionTransit.IsTeam2v2)
+            {
+                TeamId winningTeam = winner == PlayerMark.Player1 ? TeamId.Team1 : TeamId.Team2;
+                TeamId losingTeam = OnlineSessionTransit.OpposingTeam(winningTeam);
+                string winnerTeamLabel = winningTeam == TeamId.Team1 ? "equipe 1" : "equipe 2";
+                string losingTeamLabel = OnlineSessionTransit.TeamLabel(losingTeam);
+                string teamGameOverSubtitle = _lastLossWasTimeout
+                    ? $"{losingTeamLabel} a perdu par inactivite."
+                    : $"Gagnants : {OnlineSessionTransit.TeamLabel(winningTeam)}";
+                hudView.ShowGameOver($"Victoire de l'{winnerTeamLabel}", teamGameOverSubtitle, false);
+                return;
+            }
+
             string winnerName = FormatPlayer(winner, gameKind);
+            string loserName;
             if (IsOnlineGame)
             {
                 string winnerId = WinnerUserId(winner);
-                winnerName = winnerId == SessionManager.UserId
-                    ? (string.IsNullOrWhiteSpace(SessionManager.Username) ? "vous" : SessionManager.Username)
-                    : (string.IsNullOrWhiteSpace(OnlineSessionTransit.OpponentUsername) ? "adversaire" : OnlineSessionTransit.OpponentUsername);
+                bool localIsWinner = winnerId == SessionManager.UserId;
+                string localName = string.IsNullOrWhiteSpace(SessionManager.Username) ? "vous" : SessionManager.Username;
+                string opponentName = string.IsNullOrWhiteSpace(OnlineSessionTransit.OpponentUsername) ? "adversaire" : OnlineSessionTransit.OpponentUsername;
+                winnerName = localIsWinner ? localName : opponentName;
+                loserName = localIsWinner ? opponentName : localName;
+            }
+            else
+            {
+                var loserMark = winner == PlayerMark.Player1 ? PlayerMark.Player2 : PlayerMark.Player1;
+                loserName = FormatPlayer(loserMark, gameKind);
             }
 
-            hudView.ShowGameOver($"Victoire de {winnerName}", "La partie est terminee.", !IsOnlineGame);
+            string subtitle;
+            if (_lastLossWasTimeout)
+            {
+                subtitle = IsOnlineGame
+                    ? $"{loserName} a perdu par inactivite."
+                    : $"{loserName} a perdu par depassement du temps.";
+            }
+            else
+            {
+                subtitle = "La partie est terminee.";
+            }
+
+            hudView.ShowGameOver($"Victoire de {winnerName}", subtitle, !IsOnlineGame);
         }
 
         private static OnlineMovePayload CreateQometPlacePayload(int row, int col)
@@ -741,6 +1037,9 @@ namespace QuixoUnity.Gameplay
             return new OnlineMovePayload
             {
                 gameKind = OnlineSessionTransit.GameKindName(GameKind.Qomet),
+                matchMode = OnlineSessionTransit.MatchModeName(OnlineSessionTransit.SelectedMatchMode),
+                team = OnlineSessionTransit.TeamName(OnlineSessionTransit.TeamForUser(SessionManager.UserId)),
+                playerId = SessionManager.UserId,
                 action = "place",
                 toRow = row,
                 toCol = col,
@@ -753,6 +1052,9 @@ namespace QuixoUnity.Gameplay
             return new OnlineMovePayload
             {
                 gameKind = OnlineSessionTransit.GameKindName(GameKind.Qomet),
+                matchMode = OnlineSessionTransit.MatchModeName(OnlineSessionTransit.SelectedMatchMode),
+                team = OnlineSessionTransit.TeamName(OnlineSessionTransit.TeamForUser(SessionManager.UserId)),
+                playerId = SessionManager.UserId,
                 action = "move",
                 fromRow = fromRow,
                 fromCol = fromCol,
@@ -783,6 +1085,18 @@ namespace QuixoUnity.Gameplay
         private static string WinnerMessage(PlayerMark winner, GameKind kind)
         {
             return $"Victoire: {FormatPlayer(winner, kind)}";
+        }
+
+        private string WinnerMessageForCurrentMatch(PlayerMark winner)
+        {
+            if (IsOnlineGame && OnlineSessionTransit.IsTeam2v2)
+            {
+                return winner == PlayerMark.Player1
+                    ? "Victoire de l'equipe 1"
+                    : "Victoire de l'equipe 2";
+            }
+
+            return WinnerMessage(winner, gameKind);
         }
 
         private static string FormatPlayer(PlayerMark player, GameKind kind)

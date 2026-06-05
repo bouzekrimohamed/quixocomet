@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quixo / Qomet</title>
+  <script>
+    (function () {
+      var hash = window.location.hash || '';
+      if (!hash || hash.indexOf('access_token=') === -1) {
+        window.location.replace('./download/');
+        return;
+      }
+
+      var type = '';
+      try {
+        type = new URLSearchParams(hash.slice(1)).get('type') || '';
+      } catch (e) {
+        type = '';
+      }
+
+      if (type === 'recovery') {
+        window.location.replace('./reset-password/' + hash);
+        return;
+      }
+
+      window.location.replace('./email-confirmed/' + hash);
+    })();
+  </script>
+</head>
+<body>
+  <p>Redirection...</p>
+</body>
+</html>

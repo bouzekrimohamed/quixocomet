@@ -71,7 +71,11 @@ namespace QuixoUnity.UI
             renderKind = kind;
             _onCellClick = onCellClick;
             CaptureInitialScale();
-            transform.localScale = renderKind == GameKind.Qomet ? Vector3.one * 0.52f : _initialLocalScale;
+            // Qomet etait visiblement plus petit que Quixo (0.52). On passe a 0.66 pour
+            // gagner ~27% de surface utile sans empieter sur le panneau de tour ni les
+            // boutons en haut a droite. Les hitboxes des cellules suivent le scale donc
+            // la logique de clic reste alignee avec le visuel.
+            transform.localScale = renderKind == GameKind.Qomet ? Vector3.one * 0.66f : _initialLocalScale;
             if (boardRoot == null)
             {
                 boardRoot = transform;

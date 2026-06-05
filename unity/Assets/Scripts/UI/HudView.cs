@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using QuixoUnity.Core;
@@ -13,6 +14,8 @@ namespace QuixoUnity.UI
     {
         [SerializeField] private TextMeshProUGUI turnLabel = null!;
         [SerializeField] private TextMeshProUGUI infoLabel = null!;
+        [SerializeField] private TextMeshProUGUI timerLabel = null!;
+        [SerializeField] private Image timerFill = null!;
         [SerializeField] private Button restartButton = null!;
         [SerializeField] private Button menuButton = null!;
         [SerializeField] private Button upButton = null!;
@@ -32,6 +35,24 @@ namespace QuixoUnity.UI
         [SerializeField] private Color turnPlayer1Color = new(0.04f, 0.14f, 0.34f);
         [SerializeField] private Color turnPlayer2Color = new(0.62f, 0.18f, 0.09f);
         [SerializeField] private GameKind gameKind = GameKind.Quixo;
+
+        // Event leve quand le timer du joueur courant atteint 0.
+        // GameFlowController s'y abonne pour declencher la perte par inactivite.
+        public event Action TurnTimedOut;
+
+        private int _turnTimerTotalSeconds;
+        private float _turnTimerRemaining;
+        private bool _turnTimerRunning;
+        private bool _turnTimerExpiredFired;
+        private bool _turnTimerForLocalPlayer = true;
+        // Couleurs de base du timer capturees une fois depuis le theme. Permet de revenir
+        // a la couleur normale apres etre passe en rouge (sinon le label restait rouge le
+        // tour suivant).
+        private Color _timerLabelBaseColor = Color.white;
+        private Color _timerFillBaseColor = Color.white;
+        private bool _timerBaseColorsCaptured;
+        private static readonly Color TimerWarningTextColor = new(0.95f, 0.30f, 0.30f, 1f);
+        private static readonly Color TimerWarningFillColor = new(0.95f, 0.30f, 0.30f, 0.92f);
 
         private GameFlowController _controller = null!;
         private CanvasGroup _infoCanvasGroup = null!;
@@ -85,6 +106,133 @@ namespace QuixoUnity.UI
                     StopCoroutine(pair.Value);
                 }
             }
+
+            // On garde le timer en memoire mais on l'arrete pour eviter qu'il tique en arriere-plan.
+            _turnTimerRunning = false;
+        }
+
+        private void Update()
+        {
+            if (!_turnTimerRunning)
+            {
+                return;
+            }
+
+            // Tic basique en temps reel. Time.unscaledDeltaTime evite qu'un Time.timeScale=0
+            // ne fige le timer (utile en cas de pause UI).
+            _turnTimerRemaining -= Time.unscaledDeltaTime;
+            if (_turnTimerRemaining <= 0f)
+            {
+                _turnTimerRemaining = 0f;
+                _turnTimerRunning = false;
+                RenderTimer();
+                if (!_turnTimerExpiredFired)
+                {
+                    _turnTimerExpiredFired = true;
+                    TurnTimedOut?.Invoke();
+                }
+
+                return;
+            }
+
+            RenderTimer();
+        }
+
+        /// <summary>
+        /// Demarre ou redemarre le timer pour le tour courant. seconds <= 0 = sans limite.
+        /// isLocalTurn precise s'il s'agit du tour du joueur local (couleur differente).
+        /// </summary>
+        public void StartTurnTimer(int seconds, bool isLocalTurn)
+        {
+            ResolveReferences();
+            _turnTimerForLocalPlayer = isLocalTurn;
+            _turnTimerExpiredFired = false;
+            if (seconds <= 0)
+            {
+                _turnTimerTotalSeconds = 0;
+                _turnTimerRemaining = 0f;
+                _turnTimerRunning = false;
+                RenderTimerUnlimited();
+                return;
+            }
+
+            _turnTimerTotalSeconds = seconds;
+            _turnTimerRemaining = seconds;
+            _turnTimerRunning = true;
+            RenderTimer();
+        }
+
+        public void StopTurnTimer()
+        {
+            _turnTimerRunning = false;
+            _turnTimerRemaining = 0f;
+            _turnTimerExpiredFired = false;
+            RenderTimerCleared();
+        }
+
+        public bool IsTurnTimerRunning => _turnTimerRunning;
+        public float CurrentTurnTimeRemaining => _turnTimerRemaining;
+
+        private void RenderTimer()
+        {
+            if (timerLabel != null)
+            {
+                int displaySeconds = Mathf.CeilToInt(_turnTimerRemaining);
+                if (displaySeconds < 0)
+                {
+                    displaySeconds = 0;
+                }
+
+                timerLabel.text = _turnTimerForLocalPlayer
+                    ? $"Temps restant : {displaySeconds}s"
+                    : $"Adversaire : {displaySeconds}s";
+
+                // Passe en rouge quand il reste moins de 6s pour avertir le joueur local,
+                // sinon revient a la couleur de base (sinon le label restait rouge le tour
+                // suivant).
+                timerLabel.color = _turnTimerForLocalPlayer && displaySeconds <= 5
+                    ? TimerWarningTextColor
+                    : _timerLabelBaseColor;
+            }
+
+            if (timerFill != null && _turnTimerTotalSeconds > 0)
+            {
+                float ratio = Mathf.Clamp01(_turnTimerRemaining / _turnTimerTotalSeconds);
+                timerFill.fillAmount = ratio;
+                timerFill.color = _turnTimerForLocalPlayer && ratio < 0.25f
+                    ? TimerWarningFillColor
+                    : _timerFillBaseColor;
+            }
+        }
+
+        private void RenderTimerUnlimited()
+        {
+            if (timerLabel != null)
+            {
+                timerLabel.text = "Temps : sans limite";
+                timerLabel.color = _timerLabelBaseColor;
+            }
+
+            if (timerFill != null)
+            {
+                timerFill.fillAmount = 1f;
+                timerFill.color = _timerFillBaseColor;
+            }
+        }
+
+        private void RenderTimerCleared()
+        {
+            if (timerLabel != null)
+            {
+                timerLabel.text = string.Empty;
+                timerLabel.color = _timerLabelBaseColor;
+            }
+
+            if (timerFill != null)
+            {
+                timerFill.fillAmount = 0f;
+                timerFill.color = _timerFillBaseColor;
+            }
         }
 
         public void Bind(GameFlowController controller)
@@ -118,14 +266,31 @@ namespace QuixoUnity.UI
 
         public void SetTurn(PlayerMark player)
         {
+            SetTurn(player, null);
+        }
+
+        /// <summary>
+        /// Affiche le joueur courant. Si customLabel est non vide, il remplace le texte standard
+        /// (utile pour montrer "A vous de jouer" en online sans casser le code local).
+        /// </summary>
+        public void SetTurn(PlayerMark player, string customLabel)
+        {
             if (turnLabel == null)
             {
                 return;
             }
 
-            turnLabel.text = gameKind == GameKind.Qomet
-                ? $"Tour: {(player == PlayerMark.Player1 ? "Joueur 1 jaune" : "Joueur 2 rouge")}"
-                : $"Tour: {(player == PlayerMark.Player1 ? "Joueur 1 (X)" : "Joueur 2 (O)")}";
+            if (!string.IsNullOrWhiteSpace(customLabel))
+            {
+                turnLabel.text = customLabel;
+            }
+            else
+            {
+                turnLabel.text = gameKind == GameKind.Qomet
+                    ? $"Tour : {(player == PlayerMark.Player1 ? "Joueur 1 jaune" : "Joueur 2 rouge")}"
+                    : $"Tour : {(player == PlayerMark.Player1 ? "Joueur 1 (X)" : "Joueur 2 (O)")}";
+            }
+
             turnLabel.color = player == PlayerMark.Player1 ? turnPlayer1Color : turnPlayer2Color;
 
             if (_turnPulseRoutine != null)
@@ -189,6 +354,9 @@ namespace QuixoUnity.UI
             }
 
             _gameOverVisible = true;
+            // On stoppe le timer des qu'une fin de partie est affichee : evite qu'il continue
+            // a tiquer pendant que la popup est visible.
+            StopTurnTimer();
             if (gameOverTitleLabel != null)
             {
                 gameOverTitleLabel.text = string.IsNullOrWhiteSpace(title) ? "Partie terminee" : title;
@@ -217,6 +385,10 @@ namespace QuixoUnity.UI
             {
                 gameOverPanel.SetActive(false);
             }
+
+            // Sortie de game over : on remet le timer dans un etat propre. GameFlowController
+            // appelle StartTurnTimer juste apres si une partie redemarre.
+            StopTurnTimer();
         }
 
         public void SetDirections(IReadOnlyList<MoveDirection> allowed)
@@ -413,6 +585,23 @@ namespace QuixoUnity.UI
         {
             turnLabel ??= FindChildComponent<TextMeshProUGUI>("TurnLabel");
             infoLabel ??= FindChildComponent<TextMeshProUGUI>("InfoLabel");
+            timerLabel ??= FindChildComponent<TextMeshProUGUI>("TimerLabel");
+            timerFill ??= FindChildComponent<Image>("TimerFill");
+            if (!_timerBaseColorsCaptured)
+            {
+                if (timerLabel != null)
+                {
+                    _timerLabelBaseColor = timerLabel.color;
+                }
+
+                if (timerFill != null)
+                {
+                    _timerFillBaseColor = timerFill.color;
+                }
+
+                _timerBaseColorsCaptured = timerLabel != null && timerFill != null;
+            }
+
             restartButton ??= FindChildComponent<Button>("RestartButton");
             menuButton ??= FindChildComponent<Button>("MenuButton");
             upButton ??= FindChildComponent<Button>("UpButton");
@@ -472,14 +661,14 @@ namespace QuixoUnity.UI
                 infoLabel.color = palette.UiMuted;
             }
 
-            ApplyButtonTheme(restartButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(menuButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(upButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(downButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(leftButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(rightButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(gameOverMenuButton, palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(gameOverReplayButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(restartButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(menuButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(upButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(downButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(leftButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(rightButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(gameOverMenuButton, palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(gameOverReplayButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
             if (gameOverTitleLabel != null)
             {
                 gameOverTitleLabel.color = palette.UiText;
@@ -532,7 +721,8 @@ namespace QuixoUnity.UI
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)
             {
-                label.color = textColor;
+                Color background = button.interactable ? normalColor : disabledColor;
+                label.color = VisualThemeCatalog.GetButtonTextColor(background, VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme));
             }
 
             if (_directionBaseColors.ContainsKey(button))

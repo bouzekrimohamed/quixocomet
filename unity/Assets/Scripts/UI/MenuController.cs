@@ -118,10 +118,10 @@ namespace QuixoUnity.UI
             var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
             SetImageColor("Background", palette.MenuBackground);
             SetImageColor("MenuPanel", palette.MenuPanel);
-            ApplyButtonTheme(GameObject.Find("QuixoButton")?.GetComponent<Button>(), palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(GameObject.Find("QometButton")?.GetComponent<Button>(), palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(themeButton, palette.UiButton, palette.UiText, palette.UiButtonDisabled);
-            ApplyButtonTheme(GameObject.Find("QuitButton")?.GetComponent<Button>(), palette.UiButtonSecondary, palette.UiText, palette.UiButtonDisabled);
+            ApplyButtonTheme(GameObject.Find("QuixoButton")?.GetComponent<Button>(), palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(GameObject.Find("QometButton")?.GetComponent<Button>(), palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(themeButton, palette.UiButton, palette.UiButtonText, palette.UiButtonDisabled);
+            ApplyButtonTheme(GameObject.Find("QuitButton")?.GetComponent<Button>(), palette.UiButtonSecondary, palette.UiButtonText, palette.UiButtonDisabled);
             SetTextColor("Title", palette.UiText);
             SetTextColor("Subtitle", palette.UiMuted);
         }
@@ -167,7 +167,9 @@ namespace QuixoUnity.UI
             var label = button.GetComponentInChildren<TextMeshProUGUI>(true);
             if (label != null)
             {
-                label.color = textColor;
+                Color background = button.interactable ? normalColor : disabledColor;
+                var palette = VisualThemeCatalog.Get(VisualThemeCatalog.ActiveTheme);
+                label.color = VisualThemeCatalog.GetButtonTextColor(background, palette);
             }
         }
     }
