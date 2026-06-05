@@ -23,8 +23,7 @@ La page de telechargement est en ligne ici :
 
 https://bouzekrimohamed.github.io/quixocomet/download/
 
-Elle propose les builds Windows et Linux. La version macOS n'est pas encore
-disponible.
+Elle propose les builds Windows, Linux et macOS.
 
 ## Installation Windows
 
@@ -60,11 +59,19 @@ chmod +x *.x86_64
 Garder ensemble dans le meme dossier : le fichier `.x86_64`, le dossier `_Data`
 et `UnityPlayer.so`. Si l'un de ces fichiers manque, le jeu ne se lance pas.
 
-## macOS
+## Installation macOS
 
-La version macOS n'est pas encore disponible. Sur Mac, un build non signe peut
-demander un clic droit > `Ouvrir` plutot qu'un double-clic, mais le build est en
-preparation.
+1. Telecharger `BuildMacOS.zip` depuis la page de telechargement.
+2. Extraire le ZIP.
+3. Si macOS bloque l'application, faire un **clic droit → Ouvrir**.
+4. Si le message persiste, lancer dans un terminal :
+
+```bash
+xattr -dr com.apple.quarantine QuixoQomet.app
+chmod +x QuixoQomet.app/Contents/MacOS/*
+```
+
+Le build est etudiant et non signe : l'avertissement Gatekeeper est normal.
 
 ## Creation de compte
 
@@ -133,7 +140,7 @@ de partie en Quixo ou en Qomet.
 ## Limites connues
 
 - Les builds Windows et Linux ne sont pas signes.
-- La version macOS n'est pas encore disponible.
+- Les builds Windows, Linux et macOS ne sont pas signes (avertissement Gatekeeper/SmartScreen normal).
 - L'online V1 est principalement client-authoritative et utilise du polling REST plutot que Supabase Realtime.
 - Pas encore de classement, de matchmaking aleatoire 2v2, ni de reconnexion automatique a une partie en cours.
 

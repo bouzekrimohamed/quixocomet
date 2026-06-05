@@ -2,7 +2,7 @@
 const DOWNLOADS = {
   windows: "https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildWindows.zip",
   linux: "https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildLinux.zip",
-  macos: "https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildMacOs.zip"
+  macos: "https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildMacOS.zip"
 };
 
 document.querySelectorAll("[data-download]").forEach((button) => {

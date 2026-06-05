@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Telecharger Quixo / Qomet pour Windows et Linux. Version macOS bientot disponible.">
+  <meta name="description" content="Telecharger Quixo / Qomet pour Windows, Linux et macOS.">
   <title>Quixo / Qomet - Telecharger</title>
   <link rel="stylesheet" href="style.css">
 </head>
@@ -38,8 +38,8 @@
         <article class="card">
           <div class="os">MAC</div>
           <h3>macOS</h3>
-          <p>Le build macOS est en preparation. Cette carte sera activee a sa sortie.</p>
-          <a data-download="macos">Bientot disponible</a>
+          <p>Build universel livre dans une archive ZIP. Non signe — voir les instructions ci-dessous.</p>
+          <a data-download="macos">Telecharger</a>
         </article>
       </div>
     </section>
@@ -75,9 +75,16 @@
 
     <section class="split">
       <article class="glass">
-        <div class="section-title"><span>04</span><h2>macOS</h2></div>
-        <p>La version macOS n'est pas encore disponible. Le bouton <code>Bientot disponible</code> reste desactive tant que l'archive n'est pas publiee.</p>
-        <p class="note">Sur macOS, un build non signe peut demander un clic droit sur l'application puis <code>Ouvrir</code> au premier lancement.</p>
+        <div class="section-title"><span>04</span><h2>Installation macOS</h2></div>
+        <ol>
+          <li>Telecharger <code>BuildMacOS.zip</code>.</li>
+          <li>Extraire le ZIP (double-clic ou <code>Archive Utility</code>).</li>
+          <li>Si macOS bloque l'application au lancement, faire un <strong>clic droit → Ouvrir</strong>.</li>
+          <li>Si le message persiste, ouvrir un terminal dans le dossier extrait et lancer :</li>
+        </ol>
+<pre><code>xattr -dr com.apple.quarantine QuixoQomet.app
+chmod +x QuixoQomet.app/Contents/MacOS/*</code></pre>
+        <p class="note">Le build est etudiant et non signe : l'avertissement Gatekeeper est normal. Aucune desactivation de l'antivirus n'est demandee.</p>
       </article>
 
       <article class="glass">

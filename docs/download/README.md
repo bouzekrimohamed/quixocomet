@@ -5,13 +5,11 @@ https://bouzekrimohamed.github.io/quixocomet/download/
 
 ## Liens des builds
 
-Les liens Windows et Linux pointent vers les archives de la release GitHub
-`v1.0.0`. La version macOS reste desactivee tant que sa valeur dans
-`DOWNLOADS` (dans `app.js`) vaut `null`.
+Les trois liens pointent vers les archives de la release GitHub `v1.0.0`.
 
 - Windows : https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildWindows.zip
 - Linux : https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildLinux.zip
-- macOS : bientot disponible
+- macOS : https://github.com/bouzekrimohamed/quixocomet/releases/download/v1.0.0/BuildMacOS.zip
 
 ## Procedures affichees sur la page
 
@@ -32,7 +30,15 @@ chmod +x *.x86_64
 ./*.x86_64
 ```
 
-macOS : message "bientot disponible".
+macOS : apres extraction, si Gatekeeper bloque l'application :
+
+```bash
+# Retirer l'attribut de quarantaine
+xattr -dr com.apple.quarantine QuixoQomet.app
+chmod +x QuixoQomet.app/Contents/MacOS/*
+```
+
+Ou simplement : clic droit sur l'application → **Ouvrir** au premier lancement.
 
 ## Contact
 
